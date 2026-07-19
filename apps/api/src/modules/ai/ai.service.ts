@@ -1,14 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import { DirectorAgent } from './agents/director/director.agent';
 
 @Injectable()
 export class AiService {
+  constructor(private readonly directorAgent: DirectorAgent) {}
+
   async generateStory() {
-    return {
-      title: 'Bandar Bana Software Engineer',
-      hook: 'Ek bandar ko Google me job mil gayi...',
-      story:
-        'Ek bandar IT company join karta hai aur har meeting me sirf banana khata rehta hai.',
-      characters: ['Bandar', 'Manager', 'HR'],
-    };
+    const result = await this.directorAgent.execute({});
+
+    return result;
   }
 }
