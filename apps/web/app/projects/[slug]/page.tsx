@@ -1,0 +1,32 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+
+import { ProjectWorkspace } from "@/features/projects/components/ProjectWorkspace";
+import { listProjects, type Project } from "@/features/projects/services/project.service";
+
+export default function ProjectSlugPage() {
+  const params = useParams<{ slug: string }>();
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      const response = await listProjects();
+      const found = response.data.find((item) => item.slug === params.slug);
+      setProject(found ?? null);
+      setLoading(false);
+    })();
+  }, [params.slug]);
+
+  if (loading) {
+    return <div className="text-zinc-400">Loading project workspace...</div>;
+  }
+
+  if (!project) {
+    return <div className="text-rose-400">Project not found.</div>;
+  }
+
+  return <ProjectWorkspace project={project} />;
+}

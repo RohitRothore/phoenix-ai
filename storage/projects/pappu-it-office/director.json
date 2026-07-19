@@ -1,3 +1,18 @@
 {
-  "status": "pending"
+  "genre": "Comedy",
+  "targetAudience": "18-35",
+  "pacing": "Fast",
+  "storyStructure": [
+    "Hook",
+    "Setup",
+    "Conflict",
+    "Punchline"
+  ],
+  "topic": "Pappu IT Office",
+  "language": "Hindi",
+  "platform": "YouTube Shorts",
+  "style": "Pixar",
+  "humor": "Sarcastic",
+  "status": "ready",
+  "generatedAt": "2026-07-19T15:08:00.860Z"
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import StudioLayout from "@/components/layout/StudioLayout";
 
 export const metadata: Metadata = {
   title: "Phoenix AI Studio",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-[#0a0a0a] text-white">{children}</body>
+      <body className="min-h-full flex flex-col bg-[#0a0a0a] text-white">
+        <StudioLayout>{children}</StudioLayout>
+      </body>
     </html>
   );
 }

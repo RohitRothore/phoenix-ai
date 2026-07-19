@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowRight, Film, Languages, Sparkles } from "lucide-react";
 
 import type { Project } from "@/features/projects/services/project.service";
@@ -34,9 +35,9 @@ export function ProjectCard({ project }: ProjectCardProps) {
 
       <div className="mt-4 flex items-center justify-between text-sm text-zinc-400">
         <span>{project.humor}</span>
-        <button className="inline-flex items-center gap-1 text-[#7C3AED] transition hover:text-white">
+        <Link href={`/projects/${project.slug}`} className="inline-flex items-center gap-1 text-[#7C3AED] transition hover:text-white">
           Open <ArrowRight className="size-4" />
-        </button>
+        </Link>
       </div>
     </article>
   );

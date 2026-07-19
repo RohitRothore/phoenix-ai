@@ -41,6 +41,67 @@ export class ProjectsService {
     };
   }
 
+  async generateDirectorPlan(slug: string) {
+    const projectPath = `projects/${slug}/project.json`;
+    const project = await this.storage.readJson<{
+      name: string;
+      language: string;
+      platform: string;
+      style: string;
+      humor: string;
+    }>(projectPath);
+
+    const directorPlan = {
+      genre: 'Comedy',
+      targetAudience: '18-35',
+      pacing: 'Fast',
+      storyStructure: ['Hook', 'Setup', 'Conflict', 'Punchline'],
+      topic: project.name,
+      language: project.language,
+      platform: project.platform,
+      style: project.style,
+      humor: project.humor,
+      status: 'ready',
+      generatedAt: new Date().toISOString(),
+    };
+
+    await this.storage.writeJson(`projects/${slug}/director.json`, directorPlan);
+
+    return {
+      success: true,
+      message: 'Director plan generated successfully.',
+      data: directorPlan,
+    };
+  }
+
+  async generateStory(slug: string) {
+    const projectPath = `projects/${slug}/project.json`;
+    const project = await this.storage.readJson<{
+      name: string;
+      language: string;
+      style: string;
+      platform: string;
+      humor: string;
+    }>(projectPath);
+
+    const story = {
+      title: project.name,
+      hook: `A fast-paced setup for ${project.name} using a ${project.humor} tone in ${project.language}.`,
+      summary: `This story follows ${project.name} across a ${project.platform} comedy format with ${project.style} energy.`,
+      ending: 'The payoff lands with a sharp comedic twist.',
+      status: 'ready',
+      generatedAt: new Date().toISOString(),
+    };
+
+    await this.storage.writeJson(`projects/${slug}/story.json`, story);
+
+    return {
+      success: true,
+      message: 'Story generated successfully.',
+      data: story,
+    };
+  }
+
   async list() {
     const projects = await this.storage.listDirectories('projects');
     const payload = await Promise.all(

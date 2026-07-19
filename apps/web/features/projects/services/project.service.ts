@@ -46,3 +46,15 @@ export async function createProject(input: Omit<Project, "id" | "slug" | "status
 export async function listProjects() {
   return request<Project[]>("/projects");
 }
+
+export async function generateDirectorPlan(slug: string) {
+  return request<{ genre: string; storyStructure: string[]; status: string }>(`/projects/${slug}/director-plan`, {
+    method: "POST",
+  });
+}
+
+export async function generateStory(slug: string) {
+  return request<{ title: string; hook: string; summary: string; ending: string; status: string }>(`/projects/${slug}/story`, {
+    method: "POST",
+  });
+}
