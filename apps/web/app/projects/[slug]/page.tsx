@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { ProjectWorkspace } from "@/features/projects/components/ProjectWorkspace";
-import { listProjects, type Project } from "@/features/projects/services/project.service";
+import { getProject, type Project } from "@/features/projects/services/project.service";
 
 export default function ProjectSlugPage() {
   const params = useParams<{ slug: string }>();
@@ -13,12 +13,17 @@ export default function ProjectSlugPage() {
 
   useEffect(() => {
     void (async () => {
-      const response = await listProjects();
-      const found = response.data.find((item) => item.slug === params.slug);
-      setProject(found ?? null);
-      setLoading(false);
+      try {
+        const response = await getProject(params.slug);
+        setProject(response.data ?? null);
+      } catch (err) {
+        console.error("Failed to load project details:", err);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [params.slug]);
+
 
   if (loading) {
     return <div className="text-zinc-400">Loading project workspace...</div>;

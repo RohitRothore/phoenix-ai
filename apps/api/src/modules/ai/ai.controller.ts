@@ -1,14 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Controller } from '@nestjs/common';
 
-import { AiService } from './ai.service';
-import { GenerateStoryDto } from './dto/generate-story.dto';
-
+// AI-level endpoints are handled at the project level via /projects/:slug routes.
+// This controller is reserved for future AI utility or diagnostics endpoints.
 @Controller('ai')
-export class AiController {
-  constructor(private readonly aiService: AiService) {}
-
-  @Post('story')
-  generate(@Body() body: GenerateStoryDto) {
-    return this.aiService.generateStory();
-  }
-}
+export class AiController {}

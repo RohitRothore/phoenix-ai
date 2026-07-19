@@ -1,20 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { DirectorAgent } from './agents/director/director.agent';
 
 @Injectable()
 export class AiService {
-  constructor(private readonly directorAgent: DirectorAgent) {}
-
-  async generateStory() {
-    const result = await this.directorAgent.execute({
-      topic: 'Comedy short',
-      duration: 30,
-      humor: 'Sarcastic',
-      style: 'Pixar',
-      language: 'Hindi',
-      platform: 'YouTube Shorts',
-    });
-
-    return result;
-  }
+  // AI orchestration is handled through ProjectsService via agents.
+  // This service is reserved for future cross-module AI utilities.
 }

@@ -100,7 +100,7 @@ export function ProjectForm({ onCreated, onCancel }: ProjectFormProps) {
       {error ? <p className="text-sm text-rose-400">{error}</p> : null}
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" className='text-black' onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" className="bg-[#7C3AED] text-white hover:bg-[#6d28d9]" disabled={loading}>

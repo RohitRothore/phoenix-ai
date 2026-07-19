@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@phoenix/ai-core": "workspace:*"
   }
 }

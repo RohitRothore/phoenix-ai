@@ -12,6 +12,32 @@ export class ProjectsController {
     return this.projectsService.create(dto);
   }
 
+  @Get()
+  list() {
+    return this.projectsService.list();
+  }
+
+  @Get(':slug')
+  findOne(@Param('slug') slug: string) {
+    return this.projectsService.findOne(slug);
+  }
+
+  @Get(':slug/director-plan')
+  getDirectorPlan(@Param('slug') slug: string) {
+    return this.projectsService.getDirectorPlan(slug);
+  }
+
+  @Get(':slug/story')
+  getStory(@Param('slug') slug: string) {
+    return this.projectsService.getStory(slug);
+  }
+
+  @Get(':slug/scenes')
+  getScenes(@Param('slug') slug: string) {
+    return this.projectsService.getScenes(slug);
+  }
+
+
   @Post(':slug/director-plan')
   generateDirectorPlan(@Param('slug') slug: string) {
     return this.projectsService.generateDirectorPlan(slug);
@@ -22,8 +48,8 @@ export class ProjectsController {
     return this.projectsService.generateStory(slug);
   }
 
-  @Get()
-  list() {
-    return this.projectsService.list();
+  @Post(':slug/scenes')
+  generateScenes(@Param('slug') slug: string) {
+    return this.projectsService.generateScenes(slug);
   }
 }
