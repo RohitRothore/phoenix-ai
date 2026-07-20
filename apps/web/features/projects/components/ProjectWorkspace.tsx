@@ -10,9 +10,7 @@ import {
   CheckCircle2,
   Lock,
   Loader2,
-  Tv,
   Clock,
-  User,
   AlertTriangle,
 } from "lucide-react";
 
@@ -22,22 +20,28 @@ import {
   generateStory,
   generateScenes,
   generateDialogues,
+  generatePrompts,
+  prepareVideo,
   getDirectorPlan,
   getStory,
   getScenes,
   getDialogues,
+  getPrompts,
+  getVideoPlan,
   type Project,
   type DirectorPlan,
   type Story,
   type Scenes,
   type Dialogues,
+  type Prompts,
+  type VideoPlan,
 } from "@/features/projects/services/project.service";
 
 type ProjectWorkspaceProps = {
   project: Project;
 };
 
-type Step = "director" | "story" | "scenes" | "dialogues";
+type Step = "director" | "story" | "scenes" | "dialogues" | "prompts" | "video";
 
 export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [activeStep, setActiveStep] = useState<Step>("director");
@@ -46,12 +50,16 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     story: false,
     scenes: false,
     dialogues: false,
+    prompts: false,
+    video: false,
   });
 
   const [plan, setPlan] = useState<DirectorPlan | null>(null);
   const [story, setStory] = useState<Story | null>(null);
   const [scenes, setScenes] = useState<Scenes | null>(null);
   const [dialogues, setDialogues] = useState<Dialogues | null>(null);
+  const [prompts, setPrompts] = useState<Prompts | null>(null);
+  const [videoPlan, setVideoPlan] = useState<VideoPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Load existing plan, story, scenes, dialogues on mount
@@ -78,6 +86,16 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
         if (dialoguesRes.data && dialoguesRes.data.status === "ready") {
           setDialogues(dialoguesRes.data);
         }
+
+        const promptsRes = await getPrompts(project.slug);
+        if (promptsRes.data && promptsRes.data.status === "ready") {
+          setPrompts(promptsRes.data);
+        }
+
+        const videoRes = await getVideoPlan(project.slug);
+        if (videoRes.data && videoRes.data.status === "ready") {
+          setVideoPlan(videoRes.data);
+        }
       } catch (err) {
         console.error("Error loading project workspace data:", err);
       }
@@ -91,10 +109,23 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     try {
       const response = await generateDirectorPlan(project.slug);
       setPlan(response.data);
-    } catch (err: any) {
-      setError(err?.message || "Failed to generate Director Plan.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate Director Plan."));
     } finally {
       setLoading((prev) => ({ ...prev, director: false }));
+    }
+  };
+
+  const handlePrepareVideo = async () => {
+    setLoading((prev) => ({ ...prev, video: true }));
+    setError(null);
+    try {
+      const response = await prepareVideo(project.slug);
+      setVideoPlan(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to prepare video rendering."));
+    } finally {
+      setLoading((prev) => ({ ...prev, video: false }));
     }
   };
 
@@ -104,8 +135,8 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     try {
       const response = await generateStory(project.slug);
       setStory(response.data);
-    } catch (err: any) {
-      setError(err?.message || "Failed to generate Story.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate Story."));
     } finally {
       setLoading((prev) => ({ ...prev, story: false }));
     }
@@ -117,8 +148,8 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     try {
       const response = await generateScenes(project.slug);
       setScenes(response.data);
-    } catch (err: any) {
-      setError(err?.message || "Failed to generate Scenes.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate Scenes."));
     } finally {
       setLoading((prev) => ({ ...prev, scenes: false }));
     }
@@ -130,10 +161,23 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     try {
       const response = await generateDialogues(project.slug);
       setDialogues(response.data);
-    } catch (err: any) {
-      setError(err?.message || "Failed to generate Dialogues.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate Dialogues."));
     } finally {
       setLoading((prev) => ({ ...prev, dialogues: false }));
+    }
+  };
+
+  const handleGeneratePrompts = async () => {
+    setLoading((prev) => ({ ...prev, prompts: true }));
+    setError(null);
+    try {
+      const response = await generatePrompts(project.slug);
+      setPrompts(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate render prompts."));
+    } finally {
+      setLoading((prev) => ({ ...prev, prompts: false }));
     }
   };
 
@@ -141,6 +185,8 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     if (step === "story") return !plan;
     if (step === "scenes") return !story;
     if (step === "dialogues") return !scenes;
+    if (step === "prompts") return !dialogues;
+    if (step === "video") return !prompts;
     return false;
   };
 
@@ -169,14 +215,16 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
 
         {/* Horizontal Navigation Steps */}
         <div className="flex items-center gap-2 rounded-xl border border-[#27272A] bg-[#18181B] p-1.5 self-start md:self-auto">
-          {(["director", "story", "scenes", "dialogues"] as Step[]).map((step) => {
+          {(["director", "story", "scenes", "dialogues", "prompts", "video"] as Step[]).map((step) => {
             const locked = isStepLocked(step);
             const active = activeStep === step;
             const completed =
               (step === "director" && !!plan) ||
               (step === "story" && !!story) ||
               (step === "scenes" && !!scenes) ||
-              (step === "dialogues" && !!dialogues);
+              (step === "dialogues" && !!dialogues) ||
+              (step === "prompts" && !!prompts) ||
+              (step === "video" && !!videoPlan);
 
             return (
               <button
@@ -205,7 +253,11 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                     ? "Story"
                     : step === "scenes"
                     ? "Scenes"
-                    : "Dialogue"}
+                    : step === "dialogues"
+                    ? "Dialogue"
+                    : step === "prompts"
+                    ? "Prompts"
+                    : "Video"}
                 </span>
               </button>
             );
@@ -417,7 +469,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                       <Sparkles className="size-3.5" /> Core Comedy Hook (0-3s)
                     </p>
                     <p className="text-base font-medium text-white italic leading-relaxed">
-                      "{story.hook}"
+                      &quot;{story.hook}&quot;
                     </p>
                   </div>
 
@@ -729,7 +781,113 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
             </div>
           </div>
         )}
+
+        {activeStep === "prompts" && (
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="space-y-6 md:col-span-1">
+              <div className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-6">
+                <div className="flex items-center gap-3">
+                  <Sparkles className="size-5 text-[#A78BFA]" />
+                  <h3 className="text-lg font-bold text-white">Prompt Builder</h3>
+                </div>
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  Finalize each scene into a render-ready prompt with camera, lighting, mood, and visual exclusions.
+                </p>
+                <Button
+                  onClick={handleGeneratePrompts}
+                  className={prompts ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]" : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"}
+                  disabled={loading.prompts}
+                  variant={prompts ? "outline" : "default"}
+                >
+                  {loading.prompts ? <><Loader2 className="mr-2 size-4 animate-spin" />Building Prompts...</> : <><Sparkles className="mr-2 size-4" />{prompts ? "Regenerate Prompts" : "Build Render Prompts"}</>}
+                </Button>
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              {prompts ? (
+                <div className="space-y-4">
+                  {prompts.scenes.map((scene) => (
+                    <article key={scene.id} className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5">
+                      <div className="flex items-center gap-3 border-b border-[#27272A]/50 pb-3">
+                        <span className="flex size-7 items-center justify-center rounded-lg border border-[#7C3AED]/20 bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA]">#{scene.id}</span>
+                        <h4 className="font-bold text-white">{scenes?.scenes.find((item) => item.id === scene.id)?.title ?? `Scene ${scene.id}`}</h4>
+                      </div>
+                      <PromptField label="Render Prompt" value={scene.prompt} />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <PromptField label="Camera" value={scene.camera} />
+                        <PromptField label="Lighting" value={scene.lighting} />
+                        <PromptField label="Mood" value={scene.mood} />
+                        <PromptField label="Avoid" value={scene.negativePrompt} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
+                  <Sparkles className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
+                  <h3 className="mb-1 text-lg font-bold text-zinc-300">Render Prompts Pending</h3>
+                  <p className="max-w-sm text-sm text-zinc-500">Generate dialogue first, then finalize the visual direction for every scene.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeStep === "video" && (
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="space-y-6 md:col-span-1">
+              <div className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-6">
+                <div className="flex items-center gap-3">
+                  <Film className="size-5 text-[#A78BFA]" />
+                  <h3 className="text-lg font-bold text-white">Video Render Plan</h3>
+                </div>
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  Create independently renderable scene jobs from the approved prompts. A video provider will execute these jobs in the next milestone.
+                </p>
+                <Button onClick={handlePrepareVideo} className={videoPlan ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]" : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"} disabled={loading.video} variant={videoPlan ? "outline" : "default"}>
+                  {loading.video ? <><Loader2 className="mr-2 size-4 animate-spin" />Preparing Jobs...</> : <><Film className="mr-2 size-4" />{videoPlan ? "Rebuild Render Plan" : "Prepare Video Jobs"}</>}
+                </Button>
+              </div>
+            </div>
+            <div className="md:col-span-2">
+              {videoPlan ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">{videoPlan.resolution} · {videoPlan.frameRate} FPS · {videoPlan.scenes.length} scene jobs pending render</div>
+                  {videoPlan.scenes.map((scene) => (
+                    <article key={scene.id} className="flex items-center justify-between gap-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5">
+                      <div>
+                        <p className="font-bold text-white">Scene {scene.id}</p>
+                        <p className="mt-1 text-xs text-zinc-500">{scene.duration}s · {scene.camera} · {scene.lighting}</p>
+                      </div>
+                      <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400">{scene.status}</span>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
+                  <Film className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
+                  <h3 className="mb-1 text-lg font-bold text-zinc-300">Video Jobs Pending</h3>
+                  <p className="max-w-sm text-sm text-zinc-500">Approve render prompts to prepare scene jobs for a future video provider.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function PromptField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="space-y-1 rounded-lg border border-[#27272A]/40 bg-[#0a0a0b] p-3">
+      <span className="block text-[10px] font-bold uppercase tracking-widest text-[#7C3AED]">{label}</span>
+      <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-400">{value}</p>
+    </div>
+  );
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }

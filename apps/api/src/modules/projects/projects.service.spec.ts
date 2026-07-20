@@ -5,6 +5,8 @@ import { DirectorAgent } from '../ai/agents/director/director.agent';
 import { StoryAgent } from '../ai/agents/story/story.agent';
 import { SceneAgent } from '../ai/agents/scene/scene.agent';
 import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
+import { PromptAgent } from '../ai/agents/prompt/prompt.agent';
+import { VideoPreparationPipeline } from '../ai/pipelines/video-preparation.pipeline';
 
 describe('ProjectsService', () => {
   const mockDirectorAgent = {
@@ -69,6 +71,33 @@ describe('ProjectsService', () => {
     }),
   };
 
+  const mockPromptAgent = {
+    execute: jest.fn().mockResolvedValue({
+      promptVersion: '1.0.0',
+      scenes: [
+        {
+          id: 1,
+          prompt: 'A stylized office scene with Pappu asleep at his desk.',
+          negativePrompt: 'No text overlays or visual distortion.',
+          camera: 'Medium dolly-in',
+          lighting: 'Warm office lighting',
+          mood: 'Playful',
+        },
+      ],
+      generatedAt: new Date().toISOString(),
+    }),
+  };
+
+  const mockVideoPreparationPipeline = {
+    run: jest.fn().mockResolvedValue({
+      scenes: [{ id: 1, scenePath: 'video/scene-001.mp4', duration: 8, prompt: 'Office scene', negativePrompt: 'No text', camera: 'Medium shot', lighting: 'Warm', mood: 'Playful', status: 'pending' }],
+      status: 'pending',
+      generatedAt: '2026-07-20T00:00:00.000Z',
+      resolution: '1080x1920',
+      frameRate: 30,
+    }),
+  };
+
   it('creates a project directory and returns a project payload', async () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -95,6 +124,8 @@ describe('ProjectsService', () => {
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
+        { provide: PromptAgent, useValue: mockPromptAgent },
+        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
       ],
     }).compile();
 
@@ -141,6 +172,8 @@ describe('ProjectsService', () => {
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
+        { provide: PromptAgent, useValue: mockPromptAgent },
+        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
       ],
     }).compile();
 
@@ -201,6 +234,8 @@ describe('ProjectsService', () => {
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
+        { provide: PromptAgent, useValue: mockPromptAgent },
+        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
       ],
     }).compile();
 
@@ -274,6 +309,8 @@ describe('ProjectsService', () => {
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
+        { provide: PromptAgent, useValue: mockPromptAgent },
+        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
       ],
     }).compile();
 
@@ -287,5 +324,40 @@ describe('ProjectsService', () => {
         scenes: expect.any(Array),
       }),
     );
+  });
+
+  it('generates render prompts from ready project artifacts', async () => {
+    const writeJson = jest.fn().mockResolvedValue(undefined);
+    const readJson = jest.fn().mockImplementation(async (path: string) => {
+      if (path.endsWith('/project.json')) {
+        return { id: 'project-1', name: 'Pappu IT Office', slug: 'pappu-it-office', language: 'Hindi', platform: 'YouTube Shorts', style: 'Pixar', humor: 'Sarcastic' };
+      }
+      if (path.endsWith('/director.json')) {
+        return { genre: 'Comedy', targetAudience: '18-35', tone: 'Sarcastic', pacing: 'Fast', storyStructure: ['Hook'], visualStyle: 'Pixar', comedyMechanics: ['Situational'], contentGuidelines: 'Family-friendly', generatedAt: '2026-07-20T00:00:00.000Z', status: 'ready' };
+      }
+      if (path.endsWith('/scenes.json')) {
+        return { scenes: [{ id: 1, title: 'Intro', act: 'Setup', duration: 8, description: 'Pappu sleeps at his desk', dialogue: '', visualPrompt: 'Office scene', comedyElement: 'Snores' }], generatedAt: '2026-07-20T00:00:00.000Z', status: 'ready' };
+      }
+      return { scenes: [{ id: 1, dialogue: [{ character: 'Pappu', text: 'Zzz', emotion: 'sleepy', timing: 'reaction' }] }], generatedAt: '2026-07-20T00:00:00.000Z', status: 'ready' };
+    });
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        ProjectsService,
+        { provide: LocalStorageService, useValue: { ensureDirectory: jest.fn(), writeJson, readJson, exists: jest.fn().mockResolvedValue(true), listDirectories: jest.fn() } },
+        { provide: DirectorAgent, useValue: mockDirectorAgent },
+        { provide: StoryAgent, useValue: mockStoryAgent },
+        { provide: SceneAgent, useValue: mockSceneAgent },
+        { provide: DialogueAgent, useValue: mockDialogueAgent },
+        { provide: PromptAgent, useValue: mockPromptAgent },
+        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
+      ],
+    }).compile();
+
+    const result = await moduleRef.get(ProjectsService).generatePrompts('pappu-it-office');
+
+    expect(result.success).toBe(true);
+    expect(mockPromptAgent.execute).toHaveBeenCalledWith(expect.objectContaining({ scenes: expect.any(Array), dialogues: expect.any(Array) }));
+    expect(writeJson).toHaveBeenCalledWith('projects/pappu-it-office/prompts.json', expect.objectContaining({ promptVersion: '1.0.0', status: 'ready' }));
   });
 });

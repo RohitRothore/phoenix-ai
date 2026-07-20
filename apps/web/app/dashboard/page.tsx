@@ -18,7 +18,17 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    void refreshProjects();
+    let isActive = true;
+
+    void listProjects().then((response) => {
+      if (isActive) {
+        setProjects(response.data);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   return (

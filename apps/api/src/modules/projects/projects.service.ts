@@ -1,9 +1,13 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 
 import { LocalStorageService } from '../../common/storage/local-storage.service';
 import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
 import { DialogueOutput } from '../ai/agents/dialogue/dialogue.types';
+import { PromptAgent } from '../ai/agents/prompt/prompt.agent';
+import { PromptOutput } from '../ai/agents/prompt/prompt.types';
+import { VideoOutput } from '../ai/agents/video/video.types';
+import { VideoPreparationPipeline } from '../ai/pipelines/video-preparation.pipeline';
 import { DirectorAgent } from '../ai/agents/director/director.agent';
 import { DirectorOutput } from '../ai/agents/director/director.types';
 import { SceneAgent } from '../ai/agents/scene/scene.agent';
@@ -35,6 +39,8 @@ export class ProjectsService {
     private readonly storyAgent: StoryAgent,
     private readonly sceneAgent: SceneAgent,
     private readonly dialogueAgent: DialogueAgent,
+    private readonly promptAgent: PromptAgent,
+    private readonly videoPreparationPipeline: VideoPreparationPipeline,
   ) { }
 
   async create(dto: CreateProjectDto) {
@@ -75,6 +81,12 @@ export class ProjectsService {
     await this.storage.writeJson(`${projectPath}/dialogues.json`, {
       status: 'pending',
     });
+    await this.storage.writeJson(`${projectPath}/prompts.json`, {
+      status: 'pending',
+    });
+    await this.storage.writeJson(`${projectPath}/video.json`, {
+      status: 'pending',
+    });
 
     this.logger.log(`Project created: slug="${slug}", id="${projectId}"`);
 
@@ -105,7 +117,7 @@ export class ProjectsService {
   async getDirectorPlan(slug: string) {
     await this.loadProject(slug);
     const path = `projects/${slug}/director.json`;
-    const data = await this.storage.readJson<any>(path);
+    const data = await this.storage.readJson<DirectorArtifact>(path);
     return {
       success: true,
       message: 'Director plan retrieved successfully.',
@@ -116,7 +128,7 @@ export class ProjectsService {
   async getStory(slug: string) {
     await this.loadProject(slug);
     const path = `projects/${slug}/story.json`;
-    const data = await this.storage.readJson<any>(path);
+    const data = await this.storage.readJson<StoryArtifact>(path);
     return {
       success: true,
       message: 'Story retrieved successfully.',
@@ -127,7 +139,7 @@ export class ProjectsService {
   async getScenes(slug: string) {
     await this.loadProject(slug);
     const path = `projects/${slug}/scenes.json`;
-    const data = await this.storage.readJson<any>(path);
+    const data = await this.storage.readJson<SceneArtifact>(path);
     return {
       success: true,
       message: 'Scenes retrieved successfully.',
@@ -284,7 +296,7 @@ export class ProjectsService {
   async getDialogues(slug: string) {
     await this.loadProject(slug);
     const path = `projects/${slug}/dialogues.json`;
-    const data = await this.storage.readJson<any>(path);
+    const data = await this.storage.readJson<DialogueArtifact>(path);
     return {
       success: true,
       message: 'Dialogues retrieved successfully.',
@@ -346,6 +358,103 @@ export class ProjectsService {
     };
   }
 
+  async getPrompts(slug: string) {
+    await this.loadProject(slug);
+    const path = `projects/${slug}/prompts.json`;
+    const data = (await this.storage.exists(path))
+      ? await this.storage.readJson<PromptArtifact>(path)
+      : { status: 'pending' as const };
+
+    return {
+      success: true,
+      message: 'Render prompts retrieved successfully.',
+      data,
+    };
+  }
+
+  async generatePrompts(slug: string) {
+    const project = await this.loadProject(slug);
+    const directorPlan = await this.storage.readJson<DirectorArtifact>(`projects/${slug}/director.json`);
+    const scenes = await this.storage.readJson<SceneArtifact>(`projects/${slug}/scenes.json`);
+    const dialogues = await this.storage.readJson<DialogueArtifact>(`projects/${slug}/dialogues.json`);
+
+    if (directorPlan.status !== 'ready' || scenes.status !== 'ready' || dialogues.status !== 'ready') {
+      throw new ConflictException(
+        'Director plan, scenes, and dialogues must be generated before render prompts.',
+      );
+    }
+
+    this.logger.log(`Generating render prompts for project: "${slug}"`);
+    const output = await this.promptAgent.execute({
+      project: {
+        language: project.language,
+        platform: project.platform,
+        style: project.style,
+      },
+      directorPlan,
+      scenes: scenes.scenes,
+      dialogues: dialogues.scenes,
+    });
+
+    const payload: PromptArtifact = { ...output, status: 'ready' };
+    await this.storage.writeJson(`projects/${slug}/prompts.json`, payload);
+    await this.updateProjectTimestamp(slug);
+
+    this.logger.log(`Render prompts saved for project: "${slug}", scenes=${output.scenes.length}`);
+
+    return {
+      success: true,
+      message: 'Render prompts generated successfully.',
+      data: payload,
+    };
+  }
+
+  async getVideoPlan(slug: string) {
+    await this.loadProject(slug);
+    const path = `projects/${slug}/video.json`;
+    const data = (await this.storage.exists(path))
+      ? await this.storage.readJson<VideoArtifact>(path)
+      : { status: 'pending' as const };
+
+    return {
+      success: true,
+      message: 'Video render plan retrieved successfully.',
+      data,
+    };
+  }
+
+  async prepareVideo(slug: string) {
+    const project = await this.loadProject(slug);
+    const scenes = await this.storage.readJson<SceneArtifact>(`projects/${slug}/scenes.json`);
+    const prompts = await this.storage.readJson<PromptArtifact>(`projects/${slug}/prompts.json`);
+
+    if (scenes.status !== 'ready' || prompts.status !== 'ready') {
+      throw new ConflictException('Scenes and render prompts must be generated before video preparation.');
+    }
+
+    const output = await this.videoPreparationPipeline.run({
+      project: {
+        topic: project.name,
+        language: project.language,
+        platform: project.platform,
+        style: project.style,
+        humor: project.humor,
+      },
+      scenes: scenes.scenes,
+      prompts: prompts.scenes,
+    });
+    const payload: VideoArtifact = { ...output, status: 'ready' };
+
+    await this.storage.writeJson(`projects/${slug}/video.json`, payload);
+    await this.updateProjectTimestamp(slug);
+
+    return {
+      success: true,
+      message: 'Video render plan prepared successfully.',
+      data: payload,
+    };
+  }
+
   // ─── Private Helpers ──────────────────────────────────────────────────────
 
   private async loadProject(slug: string): Promise<ProjectJson> {
@@ -368,3 +477,11 @@ export class ProjectsService {
     });
   }
 }
+
+type ArtifactStatus = 'pending' | 'ready';
+type DirectorArtifact = DirectorOutput & { status: ArtifactStatus };
+type StoryArtifact = StoryOutput & { status: ArtifactStatus };
+type SceneArtifact = SceneOutput & { status: ArtifactStatus };
+type DialogueArtifact = DialogueOutput & { status: ArtifactStatus };
+type PromptArtifact = PromptOutput & { status: ArtifactStatus };
+type VideoArtifact = VideoOutput & { status: ArtifactStatus };

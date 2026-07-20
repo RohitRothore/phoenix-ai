@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Agent } from '@phoenix/ai-core';
 
 import { VideoInput, VideoOutput } from './video.types';
 
 @Injectable()
-export class VideoAgent {
+export class VideoAgent implements Agent<VideoInput, VideoOutput> {
   private readonly logger = new Logger(VideoAgent.name);
 
-  execute(input: VideoInput): VideoOutput {
+  async execute(input: VideoInput): Promise<VideoOutput> {
     this.logger.log(
       `Preparing video generation for ${input.scenes.length} scenes`,
     );
@@ -15,7 +16,11 @@ export class VideoAgent {
       id: scene.id,
       scenePath: `video/scene-${scene.id.toString().padStart(3, '0')}.mp4`,
       duration: scene.duration,
-      prompt: scene.visualPrompt,
+      prompt: scene.prompt,
+      negativePrompt: scene.negativePrompt,
+      camera: scene.camera,
+      lighting: scene.lighting,
+      mood: scene.mood,
       status: 'pending' as const,
     }));
 
@@ -23,6 +28,8 @@ export class VideoAgent {
       scenes,
       status: 'pending',
       generatedAt: new Date().toISOString(),
+      resolution: '1080x1920',
+      frameRate: 30,
     };
 
     const totalDuration = scenes.reduce((sum, s) => sum + s.duration, 0);

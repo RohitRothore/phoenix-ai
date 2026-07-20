@@ -54,6 +54,14 @@ Storage
 
 Dashboard
 
+Completed within the current vertical slice
+
+Projects
+
+Local JSON storage
+
+Studio workflow through Director Plan, Story, Scenes, Dialogues, and Prompt Builder
+
 ---
 
 # Phase 3
@@ -106,6 +114,26 @@ Emotion
 
 Timing
 
+Status
+
+Completed for the initial vertical slice
+
+---
+
+# Prompt Builder
+
+Status
+
+Completed for the initial vertical slice
+
+Features
+
+Per-scene render prompts
+
+Camera, lighting, mood, and negative-prompt direction
+
+Schema validation before storage
+
 ---
 
 # Phase 7
@@ -117,6 +145,18 @@ Video Providers
 Rendering
 
 Preview
+
+Status
+
+In Progress
+
+Completed
+
+Provider-independent scene render-plan preparation and Studio review
+
+Remaining
+
+Video provider integration, background rendering, preview, and asset validation
 
 ---
 

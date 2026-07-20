@@ -62,4 +62,24 @@ export class ProjectsController {
   generateDialogues(@Param('slug') slug: string) {
     return this.projectsService.generateDialogues(slug);
   }
+
+  @Get(':slug/prompts')
+  getPrompts(@Param('slug') slug: string) {
+    return this.projectsService.getPrompts(slug);
+  }
+
+  @Post(':slug/prompts')
+  generatePrompts(@Param('slug') slug: string) {
+    return this.projectsService.generatePrompts(slug);
+  }
+
+  @Get(':slug/video')
+  getVideoPlan(@Param('slug') slug: string) {
+    return this.projectsService.getVideoPlan(slug);
+  }
+
+  @Post(':slug/video')
+  prepareVideo(@Param('slug') slug: string) {
+    return this.projectsService.prepareVideo(slug);
+  }
 }

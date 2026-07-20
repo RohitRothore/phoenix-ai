@@ -85,6 +85,42 @@ export interface Dialogues {
   generatedAt: string;
 }
 
+export interface RenderPrompt {
+  id: number;
+  prompt: string;
+  negativePrompt: string;
+  camera: string;
+  lighting: string;
+  mood: string;
+}
+
+export interface Prompts {
+  promptVersion: string;
+  scenes: RenderPrompt[];
+  status: string;
+  generatedAt: string;
+}
+
+export interface VideoScene {
+  id: number;
+  scenePath: string;
+  duration: number;
+  prompt: string;
+  negativePrompt: string;
+  camera: string;
+  lighting: string;
+  mood: string;
+  status: "pending" | "generating" | "ready" | "failed";
+}
+
+export interface VideoPlan {
+  scenes: VideoScene[];
+  status: string;
+  resolution: "1080x1920";
+  frameRate: 24 | 30;
+  generatedAt: string;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message: string;
@@ -177,3 +213,20 @@ export async function getDialogues(slug: string) {
   return request<Dialogues>(`/projects/${slug}/dialogues`);
 }
 
+export async function generatePrompts(slug: string) {
+  return request<Prompts>(`/projects/${slug}/prompts`, {
+    method: 'POST',
+  });
+}
+
+export async function getPrompts(slug: string) {
+  return request<Prompts>(`/projects/${slug}/prompts`);
+}
+
+export async function prepareVideo(slug: string) {
+  return request<VideoPlan>(`/projects/${slug}/video`, { method: "POST" });
+}
+
+export async function getVideoPlan(slug: string) {
+  return request<VideoPlan>(`/projects/${slug}/video`);
+}

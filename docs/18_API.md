@@ -98,6 +98,26 @@ POST /generation/video
 
 POST /generation/export
 
+Current project-scoped generation endpoints
+
+POST /projects/:slug/director-plan
+
+POST /projects/:slug/story
+
+POST /projects/:slug/scenes
+
+POST /projects/:slug/dialogues
+
+POST /projects/:slug/prompts
+
+POST /projects/:slug/video
+
+Each generated artifact can be retrieved through the corresponding
+GET /projects/:slug/:artifact endpoint.
+
+The current video endpoint prepares a persisted scene-render plan. It does not
+start an external render until a video-provider implementation is available.
+
 ---
 
 # Character Endpoints

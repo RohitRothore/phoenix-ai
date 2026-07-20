@@ -1,5 +1,3 @@
-import { DirectorOutput } from '../director/director.types';
-
 export interface VideoInput {
   project: {
     topic: string;
@@ -8,14 +6,17 @@ export interface VideoInput {
     style: string;
     humor: string;
   };
-  directorPlan: DirectorOutput;
   scenes: Array<{
     id: number;
     title: string;
     act: string;
     duration: number;
     description: string;
-    visualPrompt: string;
+    prompt: string;
+    negativePrompt: string;
+    camera: string;
+    lighting: string;
+    mood: string;
     dialogue: string;
     comedyElement: string;
   }>;
@@ -26,6 +27,10 @@ export interface VideoScene {
   scenePath: string;
   duration: number;
   prompt: string;
+  negativePrompt: string;
+  camera: string;
+  lighting: string;
+  mood: string;
   status: 'pending' | 'generating' | 'ready' | 'failed';
   errorMessage?: string;
   metadata?: {
@@ -40,4 +45,6 @@ export interface VideoOutput {
   scenes: VideoScene[];
   status: 'pending' | 'generating' | 'ready' | 'failed';
   generatedAt: string;
+  resolution: '1080x1920';
+  frameRate: 24 | 30;
 }

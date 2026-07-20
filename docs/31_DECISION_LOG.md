@@ -32,6 +32,10 @@ Pipeline architecture approved.
 
 Director Agent created.
 
+Prompt Builder added as the final v0.1 pre-render stage. Its provider output is schema-validated before it is stored as a project artifact.
+
+Video preparation now uses a dedicated pipeline to create provider-independent scene render plans. External rendering remains deferred until a video provider is selected.
+
 ---
 
 ## Future
