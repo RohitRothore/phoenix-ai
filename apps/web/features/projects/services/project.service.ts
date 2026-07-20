@@ -155,8 +155,11 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || `Request failed: ${response.status}`);
+    const payload = await response.json().catch(() => ({ message: `Request failed: ${response.status}` }));
+    const message = typeof payload === 'object' && payload && 'message' in payload
+      ? (payload as { message?: string }).message
+      : undefined;
+    throw new Error(message ?? `Request failed: ${response.status}`);
   }
 
   return response.json() as Promise<ApiResponse<T>>;
