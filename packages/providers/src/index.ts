@@ -1,3 +1,3 @@
-export * from "./factory/ProviderFactory.js";
-export * from "./registry/ProviderRegistry.js";
-export * from "./gemini/GeminiProvider.js";
+export * from "./factory/ProviderFactory";
+export * from "./registry/ProviderRegistry";
+export * from "./gemini/GeminiProvider";

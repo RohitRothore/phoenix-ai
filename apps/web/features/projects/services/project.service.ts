@@ -67,6 +67,24 @@ export interface Scenes {
   generatedAt: string;
 }
 
+export interface DialogueLine {
+  character: string;
+  text: string;
+  emotion: string;
+  timing: string;
+}
+
+export interface SceneDialogue {
+  id: number;
+  dialogue: DialogueLine[];
+}
+
+export interface Dialogues {
+  scenes: SceneDialogue[];
+  status: string;
+  generatedAt: string;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message: string;
@@ -147,5 +165,15 @@ export async function getStory(slug: string) {
 
 export async function getScenes(slug: string) {
   return request<Scenes>(`/projects/${slug}/scenes`);
+}
+
+export async function generateDialogues(slug: string) {
+  return request<Dialogues>(`/projects/${slug}/dialogues`, {
+    method: 'POST',
+  });
+}
+
+export async function getDialogues(slug: string) {
+  return request<Dialogues>(`/projects/${slug}/dialogues`);
 }
 

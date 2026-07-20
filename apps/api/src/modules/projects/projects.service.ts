@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 
 import { LocalStorageService } from '../../common/storage/local-storage.service';
+import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
+import { DialogueOutput } from '../ai/agents/dialogue/dialogue.types';
 import { DirectorAgent } from '../ai/agents/director/director.agent';
 import { DirectorOutput } from '../ai/agents/director/director.types';
 import { SceneAgent } from '../ai/agents/scene/scene.agent';
@@ -32,6 +34,7 @@ export class ProjectsService {
     private readonly directorAgent: DirectorAgent,
     private readonly storyAgent: StoryAgent,
     private readonly sceneAgent: SceneAgent,
+    private readonly dialogueAgent: DialogueAgent,
   ) { }
 
   async create(dto: CreateProjectDto) {
@@ -67,6 +70,9 @@ export class ProjectsService {
       status: 'pending',
     });
     await this.storage.writeJson(`${projectPath}/scenes.json`, {
+      status: 'pending',
+    });
+    await this.storage.writeJson(`${projectPath}/dialogues.json`, {
       status: 'pending',
     });
 
@@ -271,6 +277,71 @@ export class ProjectsService {
     return {
       success: true,
       message: 'Scenes generated successfully.',
+      data: payload,
+    };
+  }
+
+  async getDialogues(slug: string) {
+    await this.loadProject(slug);
+    const path = `projects/${slug}/dialogues.json`;
+    const data = await this.storage.readJson<any>(path);
+    return {
+      success: true,
+      message: 'Dialogues retrieved successfully.',
+      data,
+    };
+  }
+
+  async generateDialogues(slug: string) {
+    const project = await this.loadProject(slug);
+
+    const directorRaw = await this.storage.readJson<
+      DirectorOutput & { status: string }
+    >(`projects/${slug}/director.json`);
+
+    const storyRaw = await this.storage.readJson<
+      StoryOutput & { status: string }
+    >(`projects/${slug}/story.json`);
+
+    const scenesRaw = await this.storage.readJson<
+      SceneOutput & { status: string }
+    >(`projects/${slug}/scenes.json`);
+
+    if (scenesRaw.status !== 'ready') {
+      throw new Error(
+        'Scenes must be generated before dialogues. Call /scenes first.',
+      );
+    }
+
+    this.logger.log(`Generating dialogues for project: "${slug}"`);
+
+    const dialogueOutput = await this.dialogueAgent.execute({
+      project: {
+        topic: project.name,
+        language: project.language,
+        platform: project.platform,
+        style: project.style,
+      },
+      directorPlan: directorRaw,
+      story: storyRaw,
+      scenes: scenesRaw.scenes,
+    });
+
+    const payload: DialogueOutput & { status: string } = {
+      ...dialogueOutput,
+      status: 'ready',
+    };
+
+    await this.storage.writeJson(`projects/${slug}/dialogues.json`, payload);
+    await this.updateProjectTimestamp(slug);
+
+    this.logger.log(
+      `Dialogues saved for project: "${slug}", scenes=${dialogueOutput.scenes.length}`,
+    );
+
+    return {
+      success: true,
+      message: 'Dialogues generated successfully.',
       data: payload,
     };
   }

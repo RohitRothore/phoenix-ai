@@ -4,6 +4,7 @@ import { LocalStorageService } from '../../common/storage/local-storage.service'
 import { DirectorAgent } from '../ai/agents/director/director.agent';
 import { StoryAgent } from '../ai/agents/story/story.agent';
 import { SceneAgent } from '../ai/agents/scene/scene.agent';
+import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
 
 describe('ProjectsService', () => {
   const mockDirectorAgent = {
@@ -49,6 +50,25 @@ describe('ProjectsService', () => {
     }),
   };
 
+  const mockDialogueAgent = {
+    execute: jest.fn().mockResolvedValue({
+      scenes: [
+        {
+          id: 1,
+          dialogue: [
+            {
+              character: 'Pappu',
+              text: 'Zzz...',
+              emotion: 'sleepy',
+              timing: 'reaction',
+            },
+          ],
+        },
+      ],
+      generatedAt: new Date().toISOString(),
+    }),
+  };
+
   it('creates a project directory and returns a project payload', async () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -74,6 +94,7 @@ describe('ProjectsService', () => {
         { provide: DirectorAgent, useValue: mockDirectorAgent },
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
+        { provide: DialogueAgent, useValue: mockDialogueAgent },
       ],
     }).compile();
 
@@ -119,6 +140,7 @@ describe('ProjectsService', () => {
         { provide: DirectorAgent, useValue: mockDirectorAgent },
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
+        { provide: DialogueAgent, useValue: mockDialogueAgent },
       ],
     }).compile();
 
@@ -178,6 +200,7 @@ describe('ProjectsService', () => {
         { provide: DirectorAgent, useValue: mockDirectorAgent },
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
+        { provide: DialogueAgent, useValue: mockDialogueAgent },
       ],
     }).compile();
 
@@ -250,6 +273,7 @@ describe('ProjectsService', () => {
         { provide: DirectorAgent, useValue: mockDirectorAgent },
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
+        { provide: DialogueAgent, useValue: mockDialogueAgent },
       ],
     }).compile();
 

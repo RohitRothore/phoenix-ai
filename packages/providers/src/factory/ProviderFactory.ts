@@ -1,5 +1,5 @@
-import { GeminiProvider } from "../gemini/GeminiProvider.js";
-import { ProviderRegistry } from "../registry/ProviderRegistry.js";
+import { GeminiProvider } from "../gemini/GeminiProvider";
+import { ProviderRegistry } from "../registry/ProviderRegistry";
 
 export class ProviderFactory {
   static create(): ProviderRegistry {

@@ -3,3 +3,4 @@ export * from './comedy/ComedyPrompt';
 export * from './director/DirectorPrompt';
 export * from './story/StoryPrompt';
 export * from './scene/ScenePrompt';
+export * from './dialogue/DialoguePrompt';

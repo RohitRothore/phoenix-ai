@@ -52,4 +52,14 @@ export class ProjectsController {
   generateScenes(@Param('slug') slug: string) {
     return this.projectsService.generateScenes(slug);
   }
+
+  @Get(':slug/dialogues')
+  getDialogues(@Param('slug') slug: string) {
+    return this.projectsService.getDialogues(slug);
+  }
+
+  @Post(':slug/dialogues')
+  generateDialogues(@Param('slug') slug: string) {
+    return this.projectsService.generateDialogues(slug);
+  }
 }

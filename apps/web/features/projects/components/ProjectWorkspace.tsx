@@ -21,20 +21,23 @@ import {
   generateDirectorPlan,
   generateStory,
   generateScenes,
+  generateDialogues,
   getDirectorPlan,
   getStory,
   getScenes,
+  getDialogues,
   type Project,
   type DirectorPlan,
   type Story,
   type Scenes,
+  type Dialogues,
 } from "@/features/projects/services/project.service";
 
 type ProjectWorkspaceProps = {
   project: Project;
 };
 
-type Step = "director" | "story" | "scenes";
+type Step = "director" | "story" | "scenes" | "dialogues";
 
 export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [activeStep, setActiveStep] = useState<Step>("director");
@@ -42,14 +45,16 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     director: false,
     story: false,
     scenes: false,
+    dialogues: false,
   });
 
   const [plan, setPlan] = useState<DirectorPlan | null>(null);
   const [story, setStory] = useState<Story | null>(null);
   const [scenes, setScenes] = useState<Scenes | null>(null);
+  const [dialogues, setDialogues] = useState<Dialogues | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load existing plan, story, scenes on mount
+  // Load existing plan, story, scenes, dialogues on mount
   useEffect(() => {
     const loadWorkspace = async () => {
       setError(null);
@@ -67,6 +72,11 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
         const scenesRes = await getScenes(project.slug);
         if (scenesRes.data && scenesRes.data.status === "ready") {
           setScenes(scenesRes.data);
+        }
+
+        const dialoguesRes = await getDialogues(project.slug);
+        if (dialoguesRes.data && dialoguesRes.data.status === "ready") {
+          setDialogues(dialoguesRes.data);
         }
       } catch (err) {
         console.error("Error loading project workspace data:", err);
@@ -114,9 +124,23 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     }
   };
 
+  const handleGenerateDialogues = async () => {
+    setLoading((prev) => ({ ...prev, dialogues: true }));
+    setError(null);
+    try {
+      const response = await generateDialogues(project.slug);
+      setDialogues(response.data);
+    } catch (err: any) {
+      setError(err?.message || "Failed to generate Dialogues.");
+    } finally {
+      setLoading((prev) => ({ ...prev, dialogues: false }));
+    }
+  };
+
   const isStepLocked = (step: Step): boolean => {
     if (step === "story") return !plan;
     if (step === "scenes") return !story;
+    if (step === "dialogues") return !scenes;
     return false;
   };
 
@@ -145,13 +169,14 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
 
         {/* Horizontal Navigation Steps */}
         <div className="flex items-center gap-2 rounded-xl border border-[#27272A] bg-[#18181B] p-1.5 self-start md:self-auto">
-          {(["director", "story", "scenes"] as Step[]).map((step) => {
+          {(["director", "story", "scenes", "dialogues"] as Step[]).map((step) => {
             const locked = isStepLocked(step);
             const active = activeStep === step;
             const completed =
               (step === "director" && !!plan) ||
               (step === "story" && !!story) ||
-              (step === "scenes" && !!scenes);
+              (step === "scenes" && !!scenes) ||
+              (step === "dialogues" && !!dialogues);
 
             return (
               <button
@@ -178,7 +203,9 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                     ? "Director"
                     : step === "story"
                     ? "Story"
-                    : "Scenes"}
+                    : step === "scenes"
+                    ? "Scenes"
+                    : "Dialogue"}
                 </span>
               </button>
             );
@@ -579,6 +606,123 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                   <h3 className="text-lg font-bold text-zinc-300 mb-1">Scenes Pending</h3>
                   <p className="text-sm text-zinc-500 max-w-sm">
                     Plan scenes to generate exact prompt specifications for rendering videos.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeStep === "dialogues" && (
+          <div className="grid gap-6 md:grid-cols-3">
+            {/* Left Info Panel */}
+            <div className="space-y-6 md:col-span-1">
+              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <BookOpenText className="size-5 text-[#A78BFA]" />
+                  <h3 className="text-lg font-bold text-white">Dialogue Writer</h3>
+                </div>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  The Dialogue AI writes natural, character-specific dialogue for every scene. Each character gets a distinct voice, emotion, and comedic timing.
+                </p>
+                {!dialogues ? (
+                  <Button
+                    onClick={handleGenerateDialogues}
+                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
+                    disabled={loading.dialogues}
+                  >
+                    {loading.dialogues ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        Writing Dialogues...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-2 size-4" />
+                        Generate Dialogues
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleGenerateDialogues}
+                    variant="outline"
+                    className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-5"
+                    disabled={loading.dialogues}
+                  >
+                    {loading.dialogues ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        Rewriting Dialogues...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-2 size-4 text-[#A78BFA]" />
+                        Rewrite Dialogues
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Right Display Panel */}
+            <div className="md:col-span-2">
+              {dialogues ? (
+                <div className="space-y-6">
+                  {dialogues.scenes.map((sceneD) => {
+                    const sceneInfo = scenes?.scenes.find((s) => s.id === sceneD.id);
+                    return (
+                      <div
+                        key={sceneD.id}
+                        className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
+                      >
+                        <div className="flex items-center gap-3 border-b border-[#27272A]/50 pb-3">
+                          <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
+                            #{sceneD.id}
+                          </span>
+                          <h4 className="font-bold text-white text-base">
+                            {sceneInfo?.title ?? `Scene ${sceneD.id}`}
+                          </h4>
+                        </div>
+
+                        <div className="space-y-3">
+                          {sceneD.dialogue.map((line, idx) => (
+                            <div
+                              key={idx}
+                              className="flex gap-3 p-3 rounded-xl bg-[#18181B] border border-[#27272A]/60"
+                            >
+                              <div className="flex flex-col items-center gap-1 min-w-[80px]">
+                                <span className="text-xs font-bold text-[#A78BFA] uppercase tracking-wider">
+                                  {line.character}
+                                </span>
+                                <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+                                  {line.emotion}
+                                </span>
+                                {line.timing && (
+                                  <span className="text-[10px] text-zinc-600 italic">
+                                    {line.timing}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex-1 border-l border-[#27272A] pl-3">
+                                <p className="text-sm text-white leading-relaxed">
+                                  {line.text}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
+                  <BookOpenText className="size-12 text-zinc-600 mb-4 stroke-1 animate-pulse" />
+                  <h3 className="text-lg font-bold text-zinc-300 mb-1">Dialogues Pending</h3>
+                  <p className="text-sm text-zinc-500 max-w-sm">
+                    Generate scenes first, then write character dialogue for each scene.
                   </p>
                 </div>
               )}
