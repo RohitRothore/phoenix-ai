@@ -27,10 +27,21 @@ export class LocalStorageService extends StorageService {
     await writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
   }
 
+  async writeText(inputPath: string, content: string): Promise<void> {
+    const filePath = this.resolvePath(inputPath);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, content, 'utf8');
+  }
+
   async readJson<T>(inputPath: string): Promise<T> {
     const filePath = this.resolvePath(inputPath);
     const content = await readFile(filePath, 'utf8');
     return JSON.parse(content) as T;
+  }
+
+  async readBinary(inputPath: string): Promise<Buffer> {
+    const filePath = this.resolvePath(inputPath);
+    return readFile(filePath);
   }
 
   async exists(inputPath: string): Promise<boolean> {
@@ -43,5 +54,9 @@ export class LocalStorageService extends StorageService {
     return entries
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
+  }
+
+  getAbsolutePath(inputPath: string): string {
+    return this.resolvePath(inputPath);
   }
 }

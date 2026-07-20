@@ -22,6 +22,10 @@ import {
   generateDialogues,
   generatePrompts,
   prepareVideo,
+  renderVideo,
+  generateSubtitles,
+  getSubtitles,
+  exportVideo,
   getDirectorPlan,
   getStory,
   getScenes,
@@ -35,6 +39,7 @@ import {
   type Dialogues,
   type Prompts,
   type VideoPlan,
+  type Subtitles,
 } from "@/features/projects/services/project.service";
 
 type ProjectWorkspaceProps = {
@@ -60,6 +65,8 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [dialogues, setDialogues] = useState<Dialogues | null>(null);
   const [prompts, setPrompts] = useState<Prompts | null>(null);
   const [videoPlan, setVideoPlan] = useState<VideoPlan | null>(null);
+  const [subtitles, setSubtitles] = useState<Subtitles | null>(null);
+  const [exportPath, setExportPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Load existing plan, story, scenes, dialogues on mount
@@ -96,6 +103,11 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
         if (videoRes.data && videoRes.data.status === "ready") {
           setVideoPlan(videoRes.data);
         }
+
+        const subtitlesRes = await getSubtitles(project.slug);
+        if (subtitlesRes.data && subtitlesRes.data.status === "ready") {
+          setSubtitles(subtitlesRes.data);
+        }
       } catch (err) {
         console.error("Error loading project workspace data:", err);
       }
@@ -124,6 +136,45 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
       setVideoPlan(response.data);
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to prepare video rendering."));
+    } finally {
+      setLoading((prev) => ({ ...prev, video: false }));
+    }
+  };
+
+  const handleRenderVideo = async () => {
+    setLoading((prev) => ({ ...prev, video: true }));
+    setError(null);
+    try {
+      const response = await renderVideo(project.slug);
+      setVideoPlan(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to render the local fallback video."));
+    } finally {
+      setLoading((prev) => ({ ...prev, video: false }));
+    }
+  };
+
+  const handleGenerateSubtitles = async () => {
+    setLoading((prev) => ({ ...prev, video: true }));
+    setError(null);
+    try {
+      const response = await generateSubtitles(project.slug);
+      setSubtitles(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate subtitles."));
+    } finally {
+      setLoading((prev) => ({ ...prev, video: false }));
+    }
+  };
+
+  const handleExportVideo = async () => {
+    setLoading((prev) => ({ ...prev, video: true }));
+    setError(null);
+    try {
+      const response = await exportVideo(project.slug);
+      setExportPath(response.data.path);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to export the captioned video."));
     } finally {
       setLoading((prev) => ({ ...prev, video: false }));
     }
@@ -848,12 +899,39 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                 <Button onClick={handlePrepareVideo} className={videoPlan ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]" : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"} disabled={loading.video} variant={videoPlan ? "outline" : "default"}>
                   {loading.video ? <><Loader2 className="mr-2 size-4 animate-spin" />Preparing Jobs...</> : <><Film className="mr-2 size-4" />{videoPlan ? "Rebuild Render Plan" : "Prepare Video Jobs"}</>}
                 </Button>
+                {videoPlan ? (
+                  <Button onClick={handleRenderVideo} className="w-full bg-emerald-600 py-5 font-semibold text-white hover:bg-emerald-500" disabled={loading.video || videoPlan.renderStatus === "completed"}>
+                    {loading.video ? <><Loader2 className="mr-2 size-4 animate-spin" />Rendering Video...</> : videoPlan.renderStatus === "completed" ? "Video Rendered" : <><Film className="mr-2 size-4" />Render Local MP4</>}
+                  </Button>
+                ) : null}
+                <Button onClick={handleGenerateSubtitles} className="w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]" disabled={loading.video || Boolean(subtitles)} variant="outline">
+                  {subtitles ? "Subtitles Generated" : "Generate Subtitles"}
+                </Button>
+                {videoPlan?.renderStatus === "completed" && subtitles ? (
+                  <Button onClick={handleExportVideo} className="w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]" disabled={loading.video || Boolean(exportPath)}>
+                    {exportPath ? "Captioned Export Created" : "Export Captioned MP4"}
+                  </Button>
+                ) : null}
+                {exportPath ? (
+                  <a
+                    href={`/api/projects/${project.slug}/export/download`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-[#27272A] bg-[#18181B] px-4 py-5 text-sm font-semibold text-zinc-200 hover:bg-[#27272A]"
+                  >
+                    Download Final MP4
+                  </a>
+                ) : null}
               </div>
             </div>
             <div className="md:col-span-2">
               {videoPlan ? (
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">{videoPlan.resolution} · {videoPlan.frameRate} FPS · {videoPlan.scenes.length} scene jobs pending render</div>
+                  <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
+                    {videoPlan.resolution} · {videoPlan.frameRate} FPS · {videoPlan.renderStatus === "completed" ? `Rendered: ${videoPlan.finalPath}` : `${videoPlan.scenes.length} scene jobs pending render`}
+                  </div>
+                  {subtitles ? <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">Captions: {subtitles.cues.length} cues · {subtitles.srtPath}</div> : null}
+                  {exportPath ? <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">Final export: {exportPath}</div> : null}
                   {videoPlan.scenes.map((scene) => (
                     <article key={scene.id} className="flex items-center justify-between gap-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5">
                       <div>

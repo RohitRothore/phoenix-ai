@@ -8,6 +8,7 @@ import { StoryAgent } from './agents/story/story.agent';
 import { PromptAgent } from './agents/prompt/prompt.agent';
 import { VideoAgent } from './agents/video/video.agent';
 import { VideoPreparationPipeline } from './pipelines/video-preparation.pipeline';
+import { SubtitlePipeline } from './pipelines/subtitle.pipeline';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 
@@ -23,7 +24,8 @@ import { AiService } from './ai.service';
     PromptAgent,
     VideoAgent,
     VideoPreparationPipeline,
+    SubtitlePipeline,
   ],
-  exports: [DirectorAgent, StoryAgent, SceneAgent, DialogueAgent, PromptAgent, VideoAgent, VideoPreparationPipeline],
+  exports: [DirectorAgent, StoryAgent, SceneAgent, DialogueAgent, PromptAgent, VideoAgent, VideoPreparationPipeline, SubtitlePipeline],
 })
 export class AiModule {}

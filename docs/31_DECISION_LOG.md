@@ -36,6 +36,8 @@ Prompt Builder added as the final v0.1 pre-render stage. Its provider output is 
 
 Video preparation now uses a dedicated pipeline to create provider-independent scene render plans. External rendering remains deferred until a video provider is selected.
 
+Local FFmpeg fallback rendering added to make the first vertical MP4 reproducible without an external video-generation service. It renders prompt title cards, not AI animation.
+
 ---
 
 ## Future

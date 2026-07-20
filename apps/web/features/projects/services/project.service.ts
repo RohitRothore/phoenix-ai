@@ -119,6 +119,16 @@ export interface VideoPlan {
   resolution: "1080x1920";
   frameRate: 24 | 30;
   generatedAt: string;
+  renderStatus?: "completed";
+  finalPath?: string;
+  renderedAt?: string;
+}
+
+export interface Subtitles {
+  cues: Array<{ index: number; startTime: string; endTime: string; text: string }>;
+  srtPath: string;
+  status: string;
+  generatedAt: string;
 }
 
 export interface ApiResponse<T> {
@@ -229,4 +239,20 @@ export async function prepareVideo(slug: string) {
 
 export async function getVideoPlan(slug: string) {
   return request<VideoPlan>(`/projects/${slug}/video`);
+}
+
+export async function renderVideo(slug: string) {
+  return request<VideoPlan>(`/projects/${slug}/video/render`, { method: "POST" });
+}
+
+export async function generateSubtitles(slug: string) {
+  return request<Subtitles>(`/projects/${slug}/subtitles`, { method: "POST" });
+}
+
+export async function getSubtitles(slug: string) {
+  return request<Subtitles>(`/projects/${slug}/subtitles`);
+}
+
+export async function exportVideo(slug: string) {
+  return request<{ path: string }>(`/projects/${slug}/export`, { method: "POST" });
 }

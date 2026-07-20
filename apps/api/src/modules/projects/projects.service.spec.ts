@@ -7,6 +7,9 @@ import { SceneAgent } from '../ai/agents/scene/scene.agent';
 import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
 import { PromptAgent } from '../ai/agents/prompt/prompt.agent';
 import { VideoPreparationPipeline } from '../ai/pipelines/video-preparation.pipeline';
+import { LocalFfmpegVideoRendererService } from '../../common/rendering/local-ffmpeg-video-renderer.service';
+import { LocalFfmpegExportService } from '../../common/rendering/local-ffmpeg-export.service';
+import { SubtitlePipeline } from '../ai/pipelines/subtitle.pipeline';
 
 describe('ProjectsService', () => {
   const mockDirectorAgent = {
@@ -98,6 +101,13 @@ describe('ProjectsService', () => {
     }),
   };
 
+  const mockLocalVideoRenderer = {
+    render: jest.fn().mockResolvedValue({ finalPath: 'video/final.mp4', duration: 8, renderedAt: '2026-07-20T00:00:00.000Z' }),
+  };
+
+  const mockSubtitlePipeline = { run: jest.fn().mockResolvedValue({ cues: [], generatedAt: '2026-07-20T00:00:00.000Z' }) };
+  const mockLocalExportService = { export: jest.fn().mockResolvedValue('exports/phoenix-short.mp4') };
+
   it('creates a project directory and returns a project payload', async () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -126,6 +136,9 @@ describe('ProjectsService', () => {
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
         { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
+        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
+        { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
     }).compile();
 
@@ -174,6 +187,9 @@ describe('ProjectsService', () => {
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
         { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
+        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
+        { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
     }).compile();
 
@@ -236,6 +252,9 @@ describe('ProjectsService', () => {
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
         { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
+        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
+        { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
     }).compile();
 
@@ -311,6 +330,9 @@ describe('ProjectsService', () => {
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
         { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
+        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
+        { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
     }).compile();
 
@@ -351,6 +373,9 @@ describe('ProjectsService', () => {
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
         { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
+        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
+        { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
     }).compile();
 

@@ -112,11 +112,14 @@ POST /projects/:slug/prompts
 
 POST /projects/:slug/video
 
+POST /projects/:slug/video/render
+
 Each generated artifact can be retrieved through the corresponding
 GET /projects/:slug/:artifact endpoint.
 
-The current video endpoint prepares a persisted scene-render plan. It does not
-start an external render until a video-provider implementation is available.
+The video preparation endpoint creates a persisted scene-render plan. The render
+endpoint produces a local FFmpeg fallback MP4 from that plan. It does not yet
+start an external AI-video render.
 
 ---
 

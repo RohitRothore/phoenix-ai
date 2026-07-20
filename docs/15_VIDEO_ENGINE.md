@@ -143,6 +143,12 @@ ComfyUI
 
 Custom Providers
 
+Initial local fallback
+
+FFmpeg can render a deterministic vertical MP4 from the prepared scene prompts.
+This fallback is intended to validate the complete local workflow; it creates
+prompt-based title-card scenes rather than AI-animated footage.
+
 The application must never depend directly on one provider.
 
 ---

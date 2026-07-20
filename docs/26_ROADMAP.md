@@ -154,6 +154,8 @@ Completed
 
 Provider-independent scene render-plan preparation and Studio review
 
+Local FFmpeg fallback rendering to a vertical MP4
+
 Remaining
 
 Video provider integration, background rendering, preview, and asset validation

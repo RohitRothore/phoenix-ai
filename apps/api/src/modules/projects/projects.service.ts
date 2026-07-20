@@ -2,12 +2,15 @@ import { ConflictException, Injectable, Logger, NotFoundException } from '@nestj
 import { randomUUID } from 'crypto';
 
 import { LocalStorageService } from '../../common/storage/local-storage.service';
+import { LocalFfmpegVideoRendererService } from '../../common/rendering/local-ffmpeg-video-renderer.service';
+import { LocalFfmpegExportService } from '../../common/rendering/local-ffmpeg-export.service';
 import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
 import { DialogueOutput } from '../ai/agents/dialogue/dialogue.types';
 import { PromptAgent } from '../ai/agents/prompt/prompt.agent';
 import { PromptOutput } from '../ai/agents/prompt/prompt.types';
 import { VideoOutput } from '../ai/agents/video/video.types';
 import { VideoPreparationPipeline } from '../ai/pipelines/video-preparation.pipeline';
+import { SubtitleOutput, SubtitlePipeline, toSrt } from '../ai/pipelines/subtitle.pipeline';
 import { DirectorAgent } from '../ai/agents/director/director.agent';
 import { DirectorOutput } from '../ai/agents/director/director.types';
 import { SceneAgent } from '../ai/agents/scene/scene.agent';
@@ -41,6 +44,9 @@ export class ProjectsService {
     private readonly dialogueAgent: DialogueAgent,
     private readonly promptAgent: PromptAgent,
     private readonly videoPreparationPipeline: VideoPreparationPipeline,
+    private readonly localVideoRenderer: LocalFfmpegVideoRendererService,
+    private readonly subtitlePipeline: SubtitlePipeline,
+    private readonly localExportService: LocalFfmpegExportService,
   ) { }
 
   async create(dto: CreateProjectDto) {
@@ -85,6 +91,9 @@ export class ProjectsService {
       status: 'pending',
     });
     await this.storage.writeJson(`${projectPath}/video.json`, {
+      status: 'pending',
+    });
+    await this.storage.writeJson(`${projectPath}/subtitles.json`, {
       status: 'pending',
     });
 
@@ -455,6 +464,83 @@ export class ProjectsService {
     };
   }
 
+  async renderVideo(slug: string) {
+    await this.loadProject(slug);
+    const path = `projects/${slug}/video.json`;
+    const video = await this.storage.readJson<VideoArtifact>(path);
+
+    if (video.status !== 'ready' || video.scenes.length === 0) {
+      throw new ConflictException('A video render plan must be prepared before rendering.');
+    }
+
+    const renderedVideo = await this.localVideoRenderer.render(
+      slug,
+      video.scenes.map((scene) => ({
+        id: scene.id,
+        duration: scene.duration,
+        prompt: scene.prompt,
+        mood: scene.mood,
+        scenePath: scene.scenePath,
+      })),
+    );
+    const payload: VideoArtifact = {
+      ...video,
+      scenes: video.scenes.map((scene) => ({ ...scene, status: 'ready' })),
+      renderStatus: 'completed',
+      finalPath: renderedVideo.finalPath,
+      renderedAt: renderedVideo.renderedAt,
+    };
+
+    await this.storage.writeJson(path, payload);
+    await this.updateProjectTimestamp(slug);
+
+    return {
+      success: true,
+      message: 'Local fallback video rendered successfully.',
+      data: payload,
+    };
+  }
+
+  async getSubtitles(slug: string) {
+    await this.loadProject(slug);
+    const path = `projects/${slug}/subtitles.json`;
+    const data = (await this.storage.exists(path))
+      ? await this.storage.readJson<SubtitleArtifact>(path)
+      : { status: 'pending' as const };
+
+    return { success: true, message: 'Subtitles retrieved successfully.', data };
+  }
+
+  async generateSubtitles(slug: string) {
+    await this.loadProject(slug);
+    const scenes = await this.storage.readJson<SceneArtifact>(`projects/${slug}/scenes.json`);
+    const dialogues = await this.storage.readJson<DialogueArtifact>(`projects/${slug}/dialogues.json`);
+    if (scenes.status !== 'ready' || dialogues.status !== 'ready') {
+      throw new ConflictException('Scenes and dialogues must be generated before subtitles.');
+    }
+
+    const output = await this.subtitlePipeline.run({ scenes: scenes.scenes, dialogues: dialogues.scenes });
+    const srtPath = 'subtitles/captions.srt';
+    await this.storage.writeText(`projects/${slug}/${srtPath}`, toSrt(output.cues));
+    const payload: SubtitleArtifact = { ...output, srtPath, status: 'ready' };
+    await this.storage.writeJson(`projects/${slug}/subtitles.json`, payload);
+    await this.updateProjectTimestamp(slug);
+
+    return { success: true, message: 'Subtitles generated successfully.', data: payload };
+  }
+
+  async exportVideo(slug: string) {
+    await this.loadProject(slug);
+    const video = await this.storage.readJson<VideoArtifact>(`projects/${slug}/video.json`);
+    const subtitles = await this.storage.readJson<SubtitleArtifact>(`projects/${slug}/subtitles.json`);
+    if (video.renderStatus !== 'completed' || !video.finalPath || subtitles.status !== 'ready') {
+      throw new ConflictException('Render the video and generate subtitles before exporting.');
+    }
+
+    const exportPath = await this.localExportService.export(slug, video.finalPath, subtitles.srtPath);
+    return { success: true, message: 'Captioned video exported successfully.', data: { path: exportPath } };
+  }
+
   // ─── Private Helpers ──────────────────────────────────────────────────────
 
   private async loadProject(slug: string): Promise<ProjectJson> {
@@ -484,4 +570,10 @@ type StoryArtifact = StoryOutput & { status: ArtifactStatus };
 type SceneArtifact = SceneOutput & { status: ArtifactStatus };
 type DialogueArtifact = DialogueOutput & { status: ArtifactStatus };
 type PromptArtifact = PromptOutput & { status: ArtifactStatus };
-type VideoArtifact = VideoOutput & { status: ArtifactStatus };
+type VideoArtifact = VideoOutput & {
+  status: ArtifactStatus;
+  renderStatus?: 'completed';
+  finalPath?: string;
+  renderedAt?: string;
+};
+type SubtitleArtifact = SubtitleOutput & { status: ArtifactStatus; srtPath: string };

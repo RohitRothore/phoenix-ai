@@ -37,7 +37,6 @@ export class ProjectsController {
     return this.projectsService.getScenes(slug);
   }
 
-
   @Post(':slug/director-plan')
   generateDirectorPlan(@Param('slug') slug: string) {
     return this.projectsService.generateDirectorPlan(slug);
@@ -81,5 +80,25 @@ export class ProjectsController {
   @Post(':slug/video')
   prepareVideo(@Param('slug') slug: string) {
     return this.projectsService.prepareVideo(slug);
+  }
+
+  @Post(':slug/video/render')
+  renderVideo(@Param('slug') slug: string) {
+    return this.projectsService.renderVideo(slug);
+  }
+
+  @Get(':slug/subtitles')
+  getSubtitles(@Param('slug') slug: string) {
+    return this.projectsService.getSubtitles(slug);
+  }
+
+  @Post(':slug/subtitles')
+  generateSubtitles(@Param('slug') slug: string) {
+    return this.projectsService.generateSubtitles(slug);
+  }
+
+  @Post(':slug/export')
+  exportVideo(@Param('slug') slug: string) {
+    return this.projectsService.exportVideo(slug);
   }
 }
