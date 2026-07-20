@@ -15,9 +15,7 @@ export class SceneAgent {
   ) {}
 
   async execute(input: SceneInput): Promise<SceneOutput> {
-    this.logger.log(
-      `Generating scenes for story: "${input.story.title}"`,
-    );
+    this.logger.log(`Generating scenes for story: "${input.story.title}"`);
 
     const provider = this.registry.get('gemini');
 

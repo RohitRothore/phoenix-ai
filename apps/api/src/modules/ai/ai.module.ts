@@ -26,6 +26,15 @@ import { AiService } from './ai.service';
     VideoPreparationPipeline,
     SubtitlePipeline,
   ],
-  exports: [DirectorAgent, StoryAgent, SceneAgent, DialogueAgent, PromptAgent, VideoAgent, VideoPreparationPipeline, SubtitlePipeline],
+  exports: [
+    DirectorAgent,
+    StoryAgent,
+    SceneAgent,
+    DialogueAgent,
+    PromptAgent,
+    VideoAgent,
+    VideoPreparationPipeline,
+    SubtitlePipeline,
+  ],
 })
 export class AiModule {}

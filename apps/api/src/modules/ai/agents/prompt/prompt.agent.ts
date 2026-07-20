@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Agent } from '@phoenix/ai-core';
 import { PromptBuilderPrompt } from '@phoenix/prompts';
 import { ProviderRegistry } from '@phoenix/providers';
@@ -16,7 +21,9 @@ export class PromptAgent implements Agent<PromptInput, PromptOutput> {
   ) {}
 
   async execute(input: PromptInput): Promise<PromptOutput> {
-    this.logger.log(`Building render prompts for ${input.scenes.length} scenes`);
+    this.logger.log(
+      `Building render prompts for ${input.scenes.length} scenes`,
+    );
 
     const provider = this.registry.get('gemini');
     const response = await provider.generateText({
@@ -25,7 +32,10 @@ export class PromptAgent implements Agent<PromptInput, PromptOutput> {
       temperature: 0.4,
     });
 
-    const scenes = this.parseScenes(response.text, input.scenes.map((scene) => scene.id));
+    const scenes = this.parseScenes(
+      response.text,
+      input.scenes.map((scene) => scene.id),
+    );
 
     return {
       promptVersion: this.prompt.version,
@@ -34,7 +44,10 @@ export class PromptAgent implements Agent<PromptInput, PromptOutput> {
     };
   }
 
-  private parseScenes(text: string, expectedSceneIds: number[]): RenderPrompt[] {
+  private parseScenes(
+    text: string,
+    expectedSceneIds: number[],
+  ): RenderPrompt[] {
     const cleaned = text
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```\s*$/, '')
@@ -44,17 +57,28 @@ export class PromptAgent implements Agent<PromptInput, PromptOutput> {
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      throw new UnprocessableEntityException('The AI provider returned invalid JSON for render prompts.');
+      throw new UnprocessableEntityException(
+        'The AI provider returned invalid JSON for render prompts.',
+      );
     }
 
     if (!isPromptResponse(parsed)) {
-      throw new UnprocessableEntityException('The AI provider returned an invalid render-prompt schema.');
+      throw new UnprocessableEntityException(
+        'The AI provider returned an invalid render-prompt schema.',
+      );
     }
 
     const returnedIds = new Set(parsed.scenes.map((scene) => scene.id));
-    const containsEveryScene = expectedSceneIds.every((id) => returnedIds.has(id));
-    if (parsed.scenes.length !== expectedSceneIds.length || !containsEveryScene) {
-      throw new UnprocessableEntityException('The AI provider did not return exactly one prompt for every scene.');
+    const containsEveryScene = expectedSceneIds.every((id) =>
+      returnedIds.has(id),
+    );
+    if (
+      parsed.scenes.length !== expectedSceneIds.length ||
+      !containsEveryScene
+    ) {
+      throw new UnprocessableEntityException(
+        'The AI provider did not return exactly one prompt for every scene.',
+      );
     }
 
     return parsed.scenes;

@@ -22,18 +22,26 @@ export interface SubtitleInput {
 }
 
 @Injectable()
-export class SubtitlePipeline implements Pipeline<SubtitleInput, SubtitleOutput> {
+export class SubtitlePipeline implements Pipeline<
+  SubtitleInput,
+  SubtitleOutput
+> {
   async run(input: SubtitleInput): Promise<SubtitleOutput> {
-    const dialogueByScene = new Map(input.dialogues.map((scene) => [scene.id, scene.dialogue]));
+    const dialogueByScene = new Map(
+      input.dialogues.map((scene) => [scene.id, scene.dialogue]),
+    );
     let elapsedSeconds = 0;
     const cues: SubtitleCue[] = [];
 
     for (const scene of input.scenes) {
       const lines = dialogueByScene.get(scene.id);
       if (!lines) {
-        throw new ConflictException(`Dialogue is missing for scene ${scene.id}.`);
+        throw new ConflictException(
+          `Dialogue is missing for scene ${scene.id}.`,
+        );
       }
-      const cueDuration = lines.length === 0 ? scene.duration : scene.duration / lines.length;
+      const cueDuration =
+        lines.length === 0 ? scene.duration : scene.duration / lines.length;
 
       lines.forEach((line, index) => {
         const start = elapsedSeconds + cueDuration * index;
@@ -53,7 +61,9 @@ export class SubtitlePipeline implements Pipeline<SubtitleInput, SubtitleOutput>
 
 export function toSrt(cues: SubtitleCue[]): string {
   return cues
-    .map((cue) => `${cue.index}\n${cue.startTime} --> ${cue.endTime}\n${cue.text}`)
+    .map(
+      (cue) => `${cue.index}\n${cue.startTime} --> ${cue.endTime}\n${cue.text}`,
+    )
     .join('\n\n');
 }
 

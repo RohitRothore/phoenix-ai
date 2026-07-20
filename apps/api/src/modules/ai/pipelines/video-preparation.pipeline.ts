@@ -19,22 +19,29 @@ export interface VideoPreparationInput {
 }
 
 @Injectable()
-export class VideoPreparationPipeline
-  implements Pipeline<VideoPreparationInput, VideoOutput>
-{
+export class VideoPreparationPipeline implements Pipeline<
+  VideoPreparationInput,
+  VideoOutput
+> {
   constructor(private readonly videoAgent: VideoAgent) {}
 
   async run(input: VideoPreparationInput): Promise<VideoOutput> {
-    const promptsByScene = new Map(input.prompts.map((prompt) => [prompt.id, prompt]));
+    const promptsByScene = new Map(
+      input.prompts.map((prompt) => [prompt.id, prompt]),
+    );
 
     if (promptsByScene.size !== input.scenes.length) {
-      throw new ConflictException('Render prompts must contain exactly one prompt for every scene.');
+      throw new ConflictException(
+        'Render prompts must contain exactly one prompt for every scene.',
+      );
     }
 
     const scenes = input.scenes.map((scene) => {
       const prompt = promptsByScene.get(scene.id);
       if (!prompt) {
-        throw new ConflictException(`Render prompt is missing for scene ${scene.id}.`);
+        throw new ConflictException(
+          `Render prompt is missing for scene ${scene.id}.`,
+        );
       }
 
       return {

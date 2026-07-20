@@ -93,7 +93,19 @@ describe('ProjectsService', () => {
 
   const mockVideoPreparationPipeline = {
     run: jest.fn().mockResolvedValue({
-      scenes: [{ id: 1, scenePath: 'video/scene-001.mp4', duration: 8, prompt: 'Office scene', negativePrompt: 'No text', camera: 'Medium shot', lighting: 'Warm', mood: 'Playful', status: 'pending' }],
+      scenes: [
+        {
+          id: 1,
+          scenePath: 'video/scene-001.mp4',
+          duration: 8,
+          prompt: 'Office scene',
+          negativePrompt: 'No text',
+          camera: 'Medium shot',
+          lighting: 'Warm',
+          mood: 'Playful',
+          status: 'pending',
+        },
+      ],
       status: 'pending',
       generatedAt: '2026-07-20T00:00:00.000Z',
       resolution: '1080x1920',
@@ -102,11 +114,21 @@ describe('ProjectsService', () => {
   };
 
   const mockLocalVideoRenderer = {
-    render: jest.fn().mockResolvedValue({ finalPath: 'video/final.mp4', duration: 8, renderedAt: '2026-07-20T00:00:00.000Z' }),
+    render: jest.fn().mockResolvedValue({
+      finalPath: 'video/final.mp4',
+      duration: 8,
+      renderedAt: '2026-07-20T00:00:00.000Z',
+    }),
   };
 
-  const mockSubtitlePipeline = { run: jest.fn().mockResolvedValue({ cues: [], generatedAt: '2026-07-20T00:00:00.000Z' }) };
-  const mockLocalExportService = { export: jest.fn().mockResolvedValue('exports/phoenix-short.mp4') };
+  const mockSubtitlePipeline = {
+    run: jest
+      .fn()
+      .mockResolvedValue({ cues: [], generatedAt: '2026-07-20T00:00:00.000Z' }),
+  };
+  const mockLocalExportService = {
+    export: jest.fn().mockResolvedValue('exports/phoenix-short.mp4'),
+  };
 
   it('creates a project directory and returns a project payload', async () => {
     const moduleRef = await Test.createTestingModule({
@@ -135,8 +157,14 @@ describe('ProjectsService', () => {
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
-        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
-        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        {
+          provide: VideoPreparationPipeline,
+          useValue: mockVideoPreparationPipeline,
+        },
+        {
+          provide: LocalFfmpegVideoRendererService,
+          useValue: mockLocalVideoRenderer,
+        },
         { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
         { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
@@ -186,8 +214,14 @@ describe('ProjectsService', () => {
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
-        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
-        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        {
+          provide: VideoPreparationPipeline,
+          useValue: mockVideoPreparationPipeline,
+        },
+        {
+          provide: LocalFfmpegVideoRendererService,
+          useValue: mockLocalVideoRenderer,
+        },
         { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
         { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
@@ -251,8 +285,14 @@ describe('ProjectsService', () => {
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
-        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
-        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        {
+          provide: VideoPreparationPipeline,
+          useValue: mockVideoPreparationPipeline,
+        },
+        {
+          provide: LocalFfmpegVideoRendererService,
+          useValue: mockLocalVideoRenderer,
+        },
         { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
         { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
@@ -306,7 +346,9 @@ describe('ProjectsService', () => {
         acts: [{ name: 'Setup', description: 'Pappu starts work' }],
         comedyBeat: 'Lazy work',
         ending: 'Payoff lands',
-        characters: [{ name: 'Pappu', role: 'protagonist', personality: 'Lazy' }],
+        characters: [
+          { name: 'Pappu', role: 'protagonist', personality: 'Lazy' },
+        ],
         status: 'ready',
       };
     });
@@ -329,8 +371,14 @@ describe('ProjectsService', () => {
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
-        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
-        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        {
+          provide: VideoPreparationPipeline,
+          useValue: mockVideoPreparationPipeline,
+        },
+        {
+          provide: LocalFfmpegVideoRendererService,
+          useValue: mockLocalVideoRenderer,
+        },
         { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
         { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
@@ -352,37 +400,112 @@ describe('ProjectsService', () => {
     const writeJson = jest.fn().mockResolvedValue(undefined);
     const readJson = jest.fn().mockImplementation(async (path: string) => {
       if (path.endsWith('/project.json')) {
-        return { id: 'project-1', name: 'Pappu IT Office', slug: 'pappu-it-office', language: 'Hindi', platform: 'YouTube Shorts', style: 'Pixar', humor: 'Sarcastic' };
+        return {
+          id: 'project-1',
+          name: 'Pappu IT Office',
+          slug: 'pappu-it-office',
+          language: 'Hindi',
+          platform: 'YouTube Shorts',
+          style: 'Pixar',
+          humor: 'Sarcastic',
+        };
       }
       if (path.endsWith('/director.json')) {
-        return { genre: 'Comedy', targetAudience: '18-35', tone: 'Sarcastic', pacing: 'Fast', storyStructure: ['Hook'], visualStyle: 'Pixar', comedyMechanics: ['Situational'], contentGuidelines: 'Family-friendly', generatedAt: '2026-07-20T00:00:00.000Z', status: 'ready' };
+        return {
+          genre: 'Comedy',
+          targetAudience: '18-35',
+          tone: 'Sarcastic',
+          pacing: 'Fast',
+          storyStructure: ['Hook'],
+          visualStyle: 'Pixar',
+          comedyMechanics: ['Situational'],
+          contentGuidelines: 'Family-friendly',
+          generatedAt: '2026-07-20T00:00:00.000Z',
+          status: 'ready',
+        };
       }
       if (path.endsWith('/scenes.json')) {
-        return { scenes: [{ id: 1, title: 'Intro', act: 'Setup', duration: 8, description: 'Pappu sleeps at his desk', dialogue: '', visualPrompt: 'Office scene', comedyElement: 'Snores' }], generatedAt: '2026-07-20T00:00:00.000Z', status: 'ready' };
+        return {
+          scenes: [
+            {
+              id: 1,
+              title: 'Intro',
+              act: 'Setup',
+              duration: 8,
+              description: 'Pappu sleeps at his desk',
+              dialogue: '',
+              visualPrompt: 'Office scene',
+              comedyElement: 'Snores',
+            },
+          ],
+          generatedAt: '2026-07-20T00:00:00.000Z',
+          status: 'ready',
+        };
       }
-      return { scenes: [{ id: 1, dialogue: [{ character: 'Pappu', text: 'Zzz', emotion: 'sleepy', timing: 'reaction' }] }], generatedAt: '2026-07-20T00:00:00.000Z', status: 'ready' };
+      return {
+        scenes: [
+          {
+            id: 1,
+            dialogue: [
+              {
+                character: 'Pappu',
+                text: 'Zzz',
+                emotion: 'sleepy',
+                timing: 'reaction',
+              },
+            ],
+          },
+        ],
+        generatedAt: '2026-07-20T00:00:00.000Z',
+        status: 'ready',
+      };
     });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         ProjectsService,
-        { provide: LocalStorageService, useValue: { ensureDirectory: jest.fn(), writeJson, readJson, exists: jest.fn().mockResolvedValue(true), listDirectories: jest.fn() } },
+        {
+          provide: LocalStorageService,
+          useValue: {
+            ensureDirectory: jest.fn(),
+            writeJson,
+            readJson,
+            exists: jest.fn().mockResolvedValue(true),
+            listDirectories: jest.fn(),
+          },
+        },
         { provide: DirectorAgent, useValue: mockDirectorAgent },
         { provide: StoryAgent, useValue: mockStoryAgent },
         { provide: SceneAgent, useValue: mockSceneAgent },
         { provide: DialogueAgent, useValue: mockDialogueAgent },
         { provide: PromptAgent, useValue: mockPromptAgent },
-        { provide: VideoPreparationPipeline, useValue: mockVideoPreparationPipeline },
-        { provide: LocalFfmpegVideoRendererService, useValue: mockLocalVideoRenderer },
+        {
+          provide: VideoPreparationPipeline,
+          useValue: mockVideoPreparationPipeline,
+        },
+        {
+          provide: LocalFfmpegVideoRendererService,
+          useValue: mockLocalVideoRenderer,
+        },
         { provide: SubtitlePipeline, useValue: mockSubtitlePipeline },
         { provide: LocalFfmpegExportService, useValue: mockLocalExportService },
       ],
     }).compile();
 
-    const result = await moduleRef.get(ProjectsService).generatePrompts('pappu-it-office');
+    const result = await moduleRef
+      .get(ProjectsService)
+      .generatePrompts('pappu-it-office');
 
     expect(result.success).toBe(true);
-    expect(mockPromptAgent.execute).toHaveBeenCalledWith(expect.objectContaining({ scenes: expect.any(Array), dialogues: expect.any(Array) }));
-    expect(writeJson).toHaveBeenCalledWith('projects/pappu-it-office/prompts.json', expect.objectContaining({ promptVersion: '1.0.0', status: 'ready' }));
+    expect(mockPromptAgent.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenes: expect.any(Array),
+        dialogues: expect.any(Array),
+      }),
+    );
+    expect(writeJson).toHaveBeenCalledWith(
+      'projects/pappu-it-office/prompts.json',
+      expect.objectContaining({ promptVersion: '1.0.0', status: 'ready' }),
+    );
   });
 });

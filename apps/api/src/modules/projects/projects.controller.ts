@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
+import type { Response } from 'express';
 
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ProjectsService } from './projects.service';
@@ -100,5 +101,15 @@ export class ProjectsController {
   @Post(':slug/export')
   exportVideo(@Param('slug') slug: string) {
     return this.projectsService.exportVideo(slug);
+  }
+
+  @Get(':slug/export/download')
+  async downloadExport(@Param('slug') slug: string, @Res() res: Response) {
+    const { buffer, filename, contentType } =
+      await this.projectsService.downloadExport(slug);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    return res.end(buffer);
   }
 }
