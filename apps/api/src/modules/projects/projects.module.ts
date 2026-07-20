@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { StorageModule } from '../../common/storage/storage.module';
 import { LocalStorageService } from '../../common/storage/local-storage.service';
 import { LocalFfmpegVideoRendererService } from '../../common/rendering/local-ffmpeg-video-renderer.service';
 import { FfmpegProcessService } from '../../common/rendering/ffmpeg-process.service';
@@ -9,7 +10,7 @@ import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
 
 @Module({
-  imports: [AiModule],
+  imports: [AiModule, StorageModule],
   controllers: [ProjectsController],
   providers: [
     ProjectsService,

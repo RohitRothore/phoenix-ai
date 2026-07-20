@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 
-import { LocalStorageService } from '../../common/storage/local-storage.service';
+import { MongoDBProjectService } from '../../common/storage/mongodb-project.service';
 import { LocalFfmpegVideoRendererService } from '../../common/rendering/local-ffmpeg-video-renderer.service';
 import { LocalFfmpegExportService } from '../../common/rendering/local-ffmpeg-export.service';
 import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
@@ -18,7 +18,6 @@ import { VideoPreparationPipeline } from '../ai/pipelines/video-preparation.pipe
 import {
   SubtitleOutput,
   SubtitlePipeline,
-  toSrt,
 } from '../ai/pipelines/subtitle.pipeline';
 import { DirectorAgent } from '../ai/agents/director/director.agent';
 import { DirectorOutput } from '../ai/agents/director/director.types';
@@ -27,6 +26,8 @@ import { SceneOutput } from '../ai/agents/scene/scene.types';
 import { StoryAgent } from '../ai/agents/story/story.agent';
 import { StoryOutput } from '../ai/agents/story/story.types';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { ArtifactStatus } from '../../common/storage/schemas';
+import { LocalStorageService } from '../../common/storage/local-storage.service';
 
 export interface ProjectJson {
   id: string;
@@ -41,11 +42,28 @@ export interface ProjectJson {
   updatedAt: string;
 }
 
+type DirectorArtifact = DirectorOutput & { status: ArtifactStatus };
+type StoryArtifact = StoryOutput & { status: ArtifactStatus };
+type SceneArtifact = SceneOutput & { status: ArtifactStatus };
+type DialogueArtifact = DialogueOutput & { status: ArtifactStatus };
+type PromptArtifact = PromptOutput & { status: ArtifactStatus };
+type VideoArtifact = VideoOutput & {
+  status: ArtifactStatus;
+  renderStatus?: 'completed';
+  finalPath?: string;
+  renderedAt?: string;
+};
+type SubtitleArtifact = SubtitleOutput & {
+  status: ArtifactStatus;
+  srtPath: string;
+};
+
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
 
   constructor(
+    private readonly mongo: MongoDBProjectService,
     private readonly storage: LocalStorageService,
     private readonly directorAgent: DirectorAgent,
     private readonly storyAgent: StoryAgent,
@@ -58,14 +76,24 @@ export class ProjectsService {
     private readonly localExportService: LocalFfmpegExportService,
   ) {}
 
-  async create(dto: CreateProjectDto): Promise<{ success: boolean; message: string; data: ProjectJson }> {
-    const slug = dto.name
+  async create(
+    dto: CreateProjectDto,
+  ): Promise<{ success: boolean; message: string; data: ProjectJson }> {
+    const baseSlug = dto.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
 
+    let slug = baseSlug;
+    let counter = 1;
+
+    while (await this.mongo.findBySlug(slug)) {
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
     const projectId = randomUUID();
-    const projectPath = `projects/${slug}`;
+    const now = new Date().toISOString();
 
     const projectPayload: ProjectJson = {
       id: projectId,
@@ -76,52 +104,59 @@ export class ProjectsService {
       style: dto.style,
       humor: dto.humor ?? 'light',
       status: 'draft',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
 
-    await this.storage.ensureDirectory(projectPath);
-    await this.storage.writeJson(`${projectPath}/project.json`, projectPayload);
-    await this.storage.writeJson(`${projectPath}/director.json`, {
-      status: 'pending',
-    });
-    await this.storage.writeJson(`${projectPath}/story.json`, {
-      status: 'pending',
-    });
-    await this.storage.writeJson(`${projectPath}/scenes.json`, {
-      status: 'pending',
-    });
-    await this.storage.writeJson(`${projectPath}/dialogues.json`, {
-      status: 'pending',
-    });
-    await this.storage.writeJson(`${projectPath}/prompts.json`, {
-      status: 'pending',
-    });
-    await this.storage.writeJson(`${projectPath}/video.json`, {
-      status: 'pending',
-    });
-    await this.storage.writeJson(`${projectPath}/subtitles.json`, {
-      status: 'pending',
-    });
+    try {
+      const createdProject = await this.mongo.createProject(projectPayload);
 
-    this.logger.log(`Project created: slug="${slug}", id="${projectId}"`);
+      await this.mongo.setArtifact(createdProject.id!, 'director', {
+        status: 'pending',
+      });
+      await this.mongo.setArtifact(createdProject.id!, 'story', {
+        status: 'pending',
+      });
+      await this.mongo.setArtifact(createdProject.id!, 'scenes', {
+        status: 'pending',
+      });
+      await this.mongo.setArtifact(createdProject.id!, 'dialogues', {
+        status: 'pending',
+      });
+      await this.mongo.setArtifact(createdProject.id!, 'prompts', {
+        status: 'pending',
+      });
+      await this.mongo.setArtifact(createdProject.id!, 'video', {
+        status: 'pending',
+      });
+      await this.mongo.setArtifact(createdProject.id!, 'subtitles', {
+        status: 'pending',
+      });
 
-    return {
-      success: true,
-      message: 'Project created successfully.',
-      data: projectPayload,
-    };
+      this.logger.log(`Project created: slug="${slug}", id="${projectId}"`);
+
+      return {
+        success: true,
+        message: 'Project created successfully.',
+        data: projectPayload,
+      };
+    } catch (error: any) {
+      if (error.code === 11000) {
+        const dupKey = error.keyPattern?.slug ? `"${error.keyValue.slug}"` : 'a project with this name';
+        throw new ConflictException(
+          `Project with slug ${dupKey} already exists. Please use a different name.`,
+        );
+      }
+      throw error;
+    }
   }
 
   async findOne(slug: string) {
-    const projectPath = `projects/${slug}/project.json`;
-    const exists = await this.storage.exists(projectPath);
+    const project = await this.mongo.findBySlug(slug);
 
-    if (!exists) {
+    if (!project) {
       throw new NotFoundException(`Project "${slug}" not found.`);
     }
-
-    const project = await this.storage.readJson<ProjectJson>(projectPath);
 
     return {
       success: true,
@@ -131,9 +166,14 @@ export class ProjectsService {
   }
 
   async getDirectorPlan(slug: string) {
-    await this.loadProject(slug);
-    const path = `projects/${slug}/director.json`;
-    const data = await this.storage.readJson<DirectorArtifact>(path);
+    const project = await this.mongo.findBySlug(slug);
+    if (!project) {
+      throw new NotFoundException(`Project "${slug}" not found.`);
+    }
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id!,
+      'director',
+    );
     return {
       success: true,
       message: 'Director plan retrieved successfully.',
@@ -142,9 +182,14 @@ export class ProjectsService {
   }
 
   async getStory(slug: string) {
-    await this.loadProject(slug);
-    const path = `projects/${slug}/story.json`;
-    const data = await this.storage.readJson<StoryArtifact>(path);
+    const project = await this.mongo.findBySlug(slug);
+    if (!project) {
+      throw new NotFoundException(`Project "${slug}" not found.`);
+    }
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id!,
+      'story',
+    );
     return {
       success: true,
       message: 'Story retrieved successfully.',
@@ -153,9 +198,14 @@ export class ProjectsService {
   }
 
   async getScenes(slug: string) {
-    await this.loadProject(slug);
-    const path = `projects/${slug}/scenes.json`;
-    const data = await this.storage.readJson<SceneArtifact>(path);
+    const project = await this.mongo.findBySlug(slug);
+    if (!project) {
+      throw new NotFoundException(`Project "${slug}" not found.`);
+    }
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id!,
+      'scenes',
+    );
     return {
       success: true,
       message: 'Scenes retrieved successfully.',
@@ -164,25 +214,12 @@ export class ProjectsService {
   }
 
   async list() {
-    const slugs = await this.storage.listDirectories('projects');
-
-    const payload = await Promise.all(
-      slugs.map(async (slug): Promise<ProjectJson | null> => {
-        const projectPath = `projects/${slug}/project.json`;
-        const exists = await this.storage.exists(projectPath);
-
-        if (!exists) {
-          return null;
-        }
-
-        return this.storage.readJson<ProjectJson>(projectPath);
-      }),
-    );
+    const projects = await this.mongo.listProjects();
 
     return {
       success: true,
       message: 'Projects retrieved successfully.',
-      data: payload.filter((item): item is ProjectJson => item !== null),
+      data: projects,
     };
   }
 
@@ -199,12 +236,9 @@ export class ProjectsService {
       humor: project.humor,
     });
 
-    const payload: DirectorOutput & { status: string } = {
-      ...directorOutput,
-      status: 'ready',
-    };
+    const payload = { ...directorOutput, status: 'ready' as const };
 
-    await this.storage.writeJson(`projects/${slug}/director.json`, payload);
+    await this.mongo.setArtifact(project.id, 'director', payload);
     await this.updateProjectTimestamp(slug);
 
     this.logger.log(`Director plan saved for project: "${slug}"`);
@@ -219,12 +253,12 @@ export class ProjectsService {
   async generateStory(slug: string) {
     const project = await this.loadProject(slug);
 
-    const directorRaw = await this.storage.readJson<
-      DirectorOutput & { status: string }
-    >(`projects/${slug}/director.json`);
+    const directorRaw = (await this.mongo.getArtifact(
+      project.id,
+      'director',
+    )) as DirectorArtifact | null;
 
-    if (directorRaw.status !== 'ready') {
-      // Auto-generate director plan if not yet done
+    if (!directorRaw || directorRaw.status !== 'ready') {
       await this.generateDirectorPlan(slug);
       return this.generateStory(slug);
     }
@@ -239,15 +273,12 @@ export class ProjectsService {
         style: project.style,
         humor: project.humor,
       },
-      directorPlan: directorRaw,
+      directorPlan: directorRaw as DirectorOutput,
     });
 
-    const payload: StoryOutput & { status: string } = {
-      ...storyOutput,
-      status: 'ready',
-    };
+    const payload = { ...storyOutput, status: 'ready' as const };
 
-    await this.storage.writeJson(`projects/${slug}/story.json`, payload);
+    await this.mongo.setArtifact(project.id, 'story', payload);
     await this.updateProjectTimestamp(slug);
 
     this.logger.log(`Story saved for project: "${slug}"`);
@@ -262,15 +293,16 @@ export class ProjectsService {
   async generateScenes(slug: string) {
     const project = await this.loadProject(slug);
 
-    const directorRaw = await this.storage.readJson<
-      DirectorOutput & { status: string }
-    >(`projects/${slug}/director.json`);
+    const directorRaw = (await this.mongo.getArtifact(
+      project.id,
+      'director',
+    )) as DirectorArtifact | null;
+    const storyRaw = (await this.mongo.getArtifact(
+      project.id,
+      'story',
+    )) as StoryArtifact | null;
 
-    const storyRaw = await this.storage.readJson<
-      StoryOutput & { status: string }
-    >(`projects/${slug}/story.json`);
-
-    if (storyRaw.status !== 'ready') {
+    if (!storyRaw || storyRaw.status !== 'ready') {
       throw new Error(
         'Story must be generated before scenes. Call /story first.',
       );
@@ -285,16 +317,13 @@ export class ProjectsService {
         platform: project.platform,
         style: project.style,
       },
-      directorPlan: directorRaw,
-      story: storyRaw,
+      directorPlan: directorRaw as DirectorOutput,
+      story: storyRaw as StoryOutput,
     });
 
-    const payload: SceneOutput & { status: string } = {
-      ...sceneOutput,
-      status: 'ready',
-    };
+    const payload = { ...sceneOutput, status: 'ready' as const };
 
-    await this.storage.writeJson(`projects/${slug}/scenes.json`, payload);
+    await this.mongo.setArtifact(project.id, 'scenes', payload);
     await this.updateProjectTimestamp(slug);
 
     this.logger.log(
@@ -309,9 +338,11 @@ export class ProjectsService {
   }
 
   async getDialogues(slug: string) {
-    await this.loadProject(slug);
-    const path = `projects/${slug}/dialogues.json`;
-    const data = await this.storage.readJson<DialogueArtifact>(path);
+    const project = await this.loadProject(slug);
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id,
+      'dialogues',
+    );
     return {
       success: true,
       message: 'Dialogues retrieved successfully.',
@@ -322,19 +353,20 @@ export class ProjectsService {
   async generateDialogues(slug: string) {
     const project = await this.loadProject(slug);
 
-    const directorRaw = await this.storage.readJson<
-      DirectorOutput & { status: string }
-    >(`projects/${slug}/director.json`);
+    const directorRaw = (await this.mongo.getArtifact(
+      project.id,
+      'director',
+    )) as DirectorArtifact | null;
+    const storyRaw = (await this.mongo.getArtifact(
+      project.id,
+      'story',
+    )) as StoryArtifact | null;
+    const scenesRaw = (await this.mongo.getArtifact(
+      project.id,
+      'scenes',
+    )) as SceneArtifact | null;
 
-    const storyRaw = await this.storage.readJson<
-      StoryOutput & { status: string }
-    >(`projects/${slug}/story.json`);
-
-    const scenesRaw = await this.storage.readJson<
-      SceneOutput & { status: string }
-    >(`projects/${slug}/scenes.json`);
-
-    if (scenesRaw.status !== 'ready') {
+    if (!scenesRaw || scenesRaw.status !== 'ready') {
       throw new Error(
         'Scenes must be generated before dialogues. Call /scenes first.',
       );
@@ -349,17 +381,14 @@ export class ProjectsService {
         platform: project.platform,
         style: project.style,
       },
-      directorPlan: directorRaw,
-      story: storyRaw,
+      directorPlan: directorRaw as DirectorOutput,
+      story: storyRaw as StoryOutput,
       scenes: scenesRaw.scenes,
     });
 
-    const payload: DialogueOutput & { status: string } = {
-      ...dialogueOutput,
-      status: 'ready',
-    };
+    const payload = { ...dialogueOutput, status: 'ready' as const };
 
-    await this.storage.writeJson(`projects/${slug}/dialogues.json`, payload);
+    await this.mongo.setArtifact(project.id, 'dialogues', payload);
     await this.updateProjectTimestamp(slug);
 
     this.logger.log(
@@ -374,12 +403,18 @@ export class ProjectsService {
   }
 
   async getPrompts(slug: string) {
-    await this.loadProject(slug);
-    const path = `projects/${slug}/prompts.json`;
-    const data = (await this.storage.exists(path))
-      ? await this.storage.readJson<PromptArtifact>(path)
-      : { status: 'pending' as const };
-
+    const project = await this.loadProject(slug);
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id,
+      'prompts',
+    );
+    if (!data) {
+      return {
+        success: true,
+        message: 'Render prompts retrieved successfully.',
+        data: { status: 'pending' as const },
+      };
+    }
     return {
       success: true,
       message: 'Render prompts retrieved successfully.',
@@ -389,19 +424,25 @@ export class ProjectsService {
 
   async generatePrompts(slug: string) {
     const project = await this.loadProject(slug);
-    const directorPlan = await this.storage.readJson<DirectorArtifact>(
-      `projects/${slug}/director.json`,
-    );
-    const scenes = await this.storage.readJson<SceneArtifact>(
-      `projects/${slug}/scenes.json`,
-    );
-    const dialogues = await this.storage.readJson<DialogueArtifact>(
-      `projects/${slug}/dialogues.json`,
-    );
+    const directorRaw = (await this.mongo.getArtifact(
+      project.id,
+      'director',
+    )) as DirectorArtifact | null;
+    const scenes = (await this.mongo.getArtifact(
+      project.id,
+      'scenes',
+    )) as SceneArtifact | null;
+    const dialogues = (await this.mongo.getArtifact(
+      project.id,
+      'dialogues',
+    )) as DialogueArtifact | null;
 
     if (
-      directorPlan.status !== 'ready' ||
+      !directorRaw ||
+      directorRaw.status !== 'ready' ||
+      !scenes ||
       scenes.status !== 'ready' ||
+      !dialogues ||
       dialogues.status !== 'ready'
     ) {
       throw new ConflictException(
@@ -416,13 +457,13 @@ export class ProjectsService {
         platform: project.platform,
         style: project.style,
       },
-      directorPlan,
+      directorPlan: directorRaw,
       scenes: scenes.scenes,
       dialogues: dialogues.scenes,
     });
 
-    const payload: PromptArtifact = { ...output, status: 'ready' };
-    await this.storage.writeJson(`projects/${slug}/prompts.json`, payload);
+    const payload = { ...output, status: 'ready' as const };
+    await this.mongo.setArtifact(project.id, 'prompts', payload);
     await this.updateProjectTimestamp(slug);
 
     this.logger.log(
@@ -437,12 +478,18 @@ export class ProjectsService {
   }
 
   async getVideoPlan(slug: string) {
-    await this.loadProject(slug);
-    const path = `projects/${slug}/video.json`;
-    const data = (await this.storage.exists(path))
-      ? await this.storage.readJson<VideoArtifact>(path)
-      : { status: 'pending' as const };
-
+    const project = await this.loadProject(slug);
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id,
+      'video',
+    );
+    if (!data) {
+      return {
+        success: true,
+        message: 'Video render plan retrieved successfully.',
+        data: { status: 'pending' as const },
+      };
+    }
     return {
       success: true,
       message: 'Video render plan retrieved successfully.',
@@ -452,14 +499,16 @@ export class ProjectsService {
 
   async prepareVideo(slug: string) {
     const project = await this.loadProject(slug);
-    const scenes = await this.storage.readJson<SceneArtifact>(
-      `projects/${slug}/scenes.json`,
-    );
-    const prompts = await this.storage.readJson<PromptArtifact>(
-      `projects/${slug}/prompts.json`,
-    );
+    const scenes = (await this.mongo.getArtifact(
+      project.id,
+      'scenes',
+    )) as SceneArtifact | null;
+    const prompts = (await this.mongo.getArtifact(
+      project.id,
+      'prompts',
+    )) as PromptArtifact | null;
 
-    if (scenes.status !== 'ready' || prompts.status !== 'ready') {
+    if (!scenes || scenes.status !== 'ready' || !prompts || prompts.status !== 'ready') {
       throw new ConflictException(
         'Scenes and render prompts must be generated before video preparation.',
       );
@@ -476,9 +525,9 @@ export class ProjectsService {
       scenes: scenes.scenes,
       prompts: prompts.scenes,
     });
-    const payload: VideoArtifact = { ...output, status: 'ready' };
+    const payload = { ...output, status: 'ready' as const };
 
-    await this.storage.writeJson(`projects/${slug}/video.json`, payload);
+    await this.mongo.setArtifact(project.id, 'video', payload);
     await this.updateProjectTimestamp(slug);
 
     return {
@@ -489,11 +538,13 @@ export class ProjectsService {
   }
 
   async renderVideo(slug: string) {
-    await this.loadProject(slug);
-    const path = `projects/${slug}/video.json`;
-    const video = await this.storage.readJson<VideoArtifact>(path);
+    const project = await this.loadProject(slug);
+    const video = (await this.mongo.getArtifact(
+      project.id,
+      'video',
+    )) as VideoArtifact | null;
 
-    if (video.status !== 'ready' || video.scenes.length === 0) {
+    if (!video || video.status !== 'ready' || !video.scenes || video.scenes.length === 0) {
       throw new ConflictException(
         'A video render plan must be prepared before rendering.',
       );
@@ -507,6 +558,7 @@ export class ProjectsService {
         prompt: scene.prompt,
         mood: scene.mood,
         scenePath: scene.scenePath,
+        status: scene.status,
       })),
     );
     const payload: VideoArtifact = {
@@ -517,7 +569,11 @@ export class ProjectsService {
       renderedAt: renderedVideo.renderedAt,
     };
 
-    await this.storage.writeJson(path, payload);
+    await this.mongo.setArtifact(
+      project.id,
+      'video',
+      payload as any,
+    );
     await this.updateProjectTimestamp(slug);
 
     return {
@@ -528,12 +584,18 @@ export class ProjectsService {
   }
 
   async getSubtitles(slug: string) {
-    await this.loadProject(slug);
-    const path = `projects/${slug}/subtitles.json`;
-    const data = (await this.storage.exists(path))
-      ? await this.storage.readJson<SubtitleArtifact>(path)
-      : { status: 'pending' as const };
-
+    const project = await this.loadProject(slug);
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id,
+      'subtitles',
+    );
+    if (!data) {
+      return {
+        success: true,
+        message: 'Subtitles retrieved successfully.',
+        data: { status: 'pending' as const },
+      };
+    }
     return {
       success: true,
       message: 'Subtitles retrieved successfully.',
@@ -542,14 +604,17 @@ export class ProjectsService {
   }
 
   async generateSubtitles(slug: string) {
-    await this.loadProject(slug);
-    const scenes = await this.storage.readJson<SceneArtifact>(
-      `projects/${slug}/scenes.json`,
-    );
-    const dialogues = await this.storage.readJson<DialogueArtifact>(
-      `projects/${slug}/dialogues.json`,
-    );
-    if (scenes.status !== 'ready' || dialogues.status !== 'ready') {
+    const project = await this.loadProject(slug);
+    const scenes = (await this.mongo.getArtifact(
+      project.id,
+      'scenes',
+    )) as SceneArtifact | null;
+    const dialogues = (await this.mongo.getArtifact(
+      project.id,
+      'dialogues',
+    )) as DialogueArtifact | null;
+
+    if (!scenes || scenes.status !== 'ready' || !dialogues || dialogues.status !== 'ready') {
       throw new ConflictException(
         'Scenes and dialogues must be generated before subtitles.',
       );
@@ -559,33 +624,38 @@ export class ProjectsService {
       scenes: scenes.scenes,
       dialogues: dialogues.scenes,
     });
-    const srtPath = 'subtitles/captions.srt';
-    await this.storage.writeText(
-      `projects/${slug}/${srtPath}`,
-      toSrt(output.cues),
-    );
-    const payload: SubtitleArtifact = { ...output, srtPath, status: 'ready' };
-    await this.storage.writeJson(`projects/${slug}/subtitles.json`, payload);
+
+    const srtPath = `projects/${slug}/subtitles/captions.srt`;
+    await this.mongo.setArtifact(project.id, 'subtitles', {
+      ...output,
+      srtPath,
+      status: 'ready' as const,
+    });
     await this.updateProjectTimestamp(slug);
 
     return {
       success: true,
       message: 'Subtitles generated successfully.',
-      data: payload,
+      data: { ...output, srtPath, status: 'ready' },
     };
   }
 
   async exportVideo(slug: string) {
-    await this.loadProject(slug);
-    const video = await this.storage.readJson<VideoArtifact>(
-      `projects/${slug}/video.json`,
-    );
-    const subtitles = await this.storage.readJson<SubtitleArtifact>(
-      `projects/${slug}/subtitles.json`,
-    );
+    const project = await this.loadProject(slug);
+    const video = (await this.mongo.getArtifact(
+      project.id,
+      'video',
+    )) as VideoArtifact | null;
+    const subtitles = (await this.mongo.getArtifact(
+      project.id,
+      'subtitles',
+    )) as SubtitleArtifact | null;
+
     if (
+      !video ||
       video.renderStatus !== 'completed' ||
       !video.finalPath ||
+      !subtitles ||
       subtitles.status !== 'ready'
     ) {
       throw new ConflictException(
@@ -606,11 +676,13 @@ export class ProjectsService {
   }
 
   async downloadExport(slug: string) {
-    await this.loadProject(slug);
-    const video = await this.storage.readJson<VideoArtifact>(
-      `projects/${slug}/video.json`,
-    );
-    if (video.renderStatus !== 'completed' || !video.finalPath) {
+    const project = await this.loadProject(slug);
+    const video = (await this.mongo.getArtifact(
+      project.id,
+      'video',
+    )) as VideoArtifact | null;
+
+    if (!video || video.renderStatus !== 'completed' || !video.finalPath) {
       throw new ConflictException(
         'Render the video before downloading the final export.',
       );
@@ -630,39 +702,19 @@ export class ProjectsService {
   // ─── Private Helpers ──────────────────────────────────────────────────────
 
   private async loadProject(slug: string): Promise<ProjectJson> {
-    const projectPath = `projects/${slug}/project.json`;
-    const exists = await this.storage.exists(projectPath);
-
-    if (!exists) {
+    const project = await this.mongo.findBySlug(slug);
+    if (!project) {
       throw new NotFoundException(`Project "${slug}" not found.`);
     }
-
-    return this.storage.readJson<ProjectJson>(projectPath);
+    const raw = project.toObject ? project.toObject() : project;
+    return raw as ProjectJson;
   }
 
   private async updateProjectTimestamp(slug: string): Promise<void> {
-    const projectPath = `projects/${slug}/project.json`;
-    const project = await this.storage.readJson<ProjectJson>(projectPath);
-    await this.storage.writeJson(projectPath, {
-      ...project,
+    const project = await this.mongo.findBySlug(slug);
+    if (!project) return;
+    await this.mongo.updateProject(slug, {
       updatedAt: new Date().toISOString(),
     });
   }
 }
-
-type ArtifactStatus = 'pending' | 'ready';
-type DirectorArtifact = DirectorOutput & { status: ArtifactStatus };
-type StoryArtifact = StoryOutput & { status: ArtifactStatus };
-type SceneArtifact = SceneOutput & { status: ArtifactStatus };
-type DialogueArtifact = DialogueOutput & { status: ArtifactStatus };
-type PromptArtifact = PromptOutput & { status: ArtifactStatus };
-type VideoArtifact = VideoOutput & {
-  status: ArtifactStatus;
-  renderStatus?: 'completed';
-  finalPath?: string;
-  renderedAt?: string;
-};
-type SubtitleArtifact = SubtitleOutput & {
-  status: ArtifactStatus;
-  srtPath: string;
-};
