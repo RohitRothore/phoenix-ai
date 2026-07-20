@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GeminiProvider, ProviderRegistry } from '@phoenix/providers';
+import {
+  GeminiProvider,
+  ProviderRegistry,
+  MockMediaProvider,
+} from '@phoenix/providers';
 
 export const PROVIDER_REGISTRY = 'PROVIDER_REGISTRY';
 
@@ -13,6 +17,7 @@ export const PROVIDER_REGISTRY = 'PROVIDER_REGISTRY';
         const apiKey = config.getOrThrow<string>('GEMINI_API_KEY');
         const registry = new ProviderRegistry();
         registry.register(new GeminiProvider(apiKey));
+        registry.register(new MockMediaProvider());
         return registry;
       },
     },

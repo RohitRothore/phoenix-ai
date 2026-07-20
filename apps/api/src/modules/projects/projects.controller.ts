@@ -98,6 +98,16 @@ export class ProjectsController {
     return this.projectsService.generateSubtitles(slug);
   }
 
+  @Get(':slug/voice')
+  getVoice(@Param('slug') slug: string) {
+    return this.projectsService.getVoice(slug);
+  }
+
+  @Post(':slug/voice')
+  generateVoice(@Param('slug') slug: string) {
+    return this.projectsService.generateVoice(slug);
+  }
+
   @Post(':slug/export')
   exportVideo(@Param('slug') slug: string) {
     return this.projectsService.exportVideo(slug);
@@ -108,7 +118,10 @@ export class ProjectsController {
     const { buffer, filename, contentType } =
       await this.projectsService.downloadExport(slug);
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
     res.setHeader('Content-Length', buffer.length);
     return res.end(buffer);
   }

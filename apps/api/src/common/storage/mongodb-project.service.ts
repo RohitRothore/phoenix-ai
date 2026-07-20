@@ -63,7 +63,8 @@ export class MongoDBProjectService {
       | 'dialogues'
       | 'prompts'
       | 'video'
-      | 'subtitles',
+      | 'subtitles'
+      | 'voice',
     data: T,
     extra?: Record<string, unknown>,
   ): Promise<void> {
@@ -91,7 +92,8 @@ export class MongoDBProjectService {
       | 'dialogues'
       | 'prompts'
       | 'video'
-      | 'subtitles',
+      | 'subtitles'
+      | 'voice',
   ): Promise<(T & { status: ArtifactStatus }) | null> {
     const artifact = await this.artifactModel
       .findOne({ projectId, type })

@@ -119,6 +119,22 @@ export interface SubtitleScene {
   }[];
 }
 
+export interface VoiceLine {
+  sceneId: string;
+  character: string;
+  text: string;
+  emotion: string;
+  audioPath: string;
+  duration: number;
+  status: 'pending' | 'ready' | 'error';
+}
+
+export interface VoiceArtifact {
+  scenes: VoiceLine[];
+  status: 'pending' | 'ready' | 'error';
+  generatedAt?: string;
+}
+
 export type ArtifactType =
   | 'director'
   | 'story'
@@ -126,7 +142,8 @@ export type ArtifactType =
   | 'dialogues'
   | 'prompts'
   | 'video'
-  | 'subtitles';
+  | 'subtitles'
+  | 'voice';
 
 export interface ArtifactStatus {
   status: 'pending' | 'ready' | 'error';

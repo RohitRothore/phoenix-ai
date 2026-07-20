@@ -8,6 +8,7 @@ import type {
   PromptArtifact,
   VideoArtifact,
   SubtitleArtifact,
+  VoiceArtifact,
 } from '@/lib/types/project';
 
 export type CreateProjectInput = {
@@ -48,6 +49,9 @@ export const projectsApi = {
   getSubtitles: (slug: string) =>
     api.get<ApiResponse<SubtitleArtifact>>(`/projects/${slug}/subtitles`),
 
+  getVoice: (slug: string) =>
+    api.get<ApiResponse<VoiceArtifact>>(`/projects/${slug}/voice`),
+
   generateDirectorPlan: (slug: string) =>
     api.post<ApiResponse<DirectorArtifact>>(
       `/projects/${slug}/director-plan`,
@@ -74,6 +78,9 @@ export const projectsApi = {
 
   generateSubtitles: (slug: string) =>
     api.post<ApiResponse<SubtitleArtifact>>(`/projects/${slug}/subtitles`, {}),
+
+  generateVoice: (slug: string) =>
+    api.post<ApiResponse<VoiceArtifact>>(`/projects/${slug}/voice`, {}),
 
   exportVideo: (slug: string) =>
     api.post<ApiResponse<{ path: string }>>(`/projects/${slug}/export`, {}),

@@ -7,6 +7,7 @@ import { SceneAgent } from './agents/scene/scene.agent';
 import { StoryAgent } from './agents/story/story.agent';
 import { PromptAgent } from './agents/prompt/prompt.agent';
 import { VideoAgent } from './agents/video/video.agent';
+import { VoiceAgent } from './agents/voice/voice.agent';
 import { VideoPreparationPipeline } from './pipelines/video-preparation.pipeline';
 import { SubtitlePipeline } from './pipelines/subtitle.pipeline';
 import { AiController } from './ai.controller';
@@ -23,6 +24,7 @@ import { AiService } from './ai.service';
     DialogueAgent,
     PromptAgent,
     VideoAgent,
+    VoiceAgent,
     VideoPreparationPipeline,
     SubtitlePipeline,
   ],
@@ -33,6 +35,7 @@ import { AiService } from './ai.service';
     DialogueAgent,
     PromptAgent,
     VideoAgent,
+    VoiceAgent,
     VideoPreparationPipeline,
     SubtitlePipeline,
   ],

@@ -25,6 +25,8 @@ import { SceneAgent } from '../ai/agents/scene/scene.agent';
 import { SceneOutput } from '../ai/agents/scene/scene.types';
 import { StoryAgent } from '../ai/agents/story/story.agent';
 import { StoryOutput } from '../ai/agents/story/story.types';
+import { VoiceAgent } from '../ai/agents/voice/voice.agent';
+import { VoiceOutput } from '../ai/agents/voice/voice.types';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ArtifactStatus } from '../../common/storage/schemas';
 import { LocalStorageService } from '../../common/storage/local-storage.service';
@@ -57,6 +59,9 @@ type SubtitleArtifact = SubtitleOutput & {
   status: ArtifactStatus;
   srtPath: string;
 };
+type VoiceArtifact = VoiceOutput & {
+  status: ArtifactStatus;
+};
 
 @Injectable()
 export class ProjectsService {
@@ -74,6 +79,7 @@ export class ProjectsService {
     private readonly localVideoRenderer: LocalFfmpegVideoRendererService,
     private readonly subtitlePipeline: SubtitlePipeline,
     private readonly localExportService: LocalFfmpegExportService,
+    private readonly voiceAgent: VoiceAgent,
   ) {}
 
   async create(
@@ -132,6 +138,9 @@ export class ProjectsService {
       await this.mongo.setArtifact(createdProject.id!, 'subtitles', {
         status: 'pending',
       });
+      await this.mongo.setArtifact(createdProject.id!, 'voice', {
+        status: 'pending',
+      });
 
       this.logger.log(`Project created: slug="${slug}", id="${projectId}"`);
 
@@ -140,9 +149,10 @@ export class ProjectsService {
         message: 'Project created successfully.',
         data: projectPayload,
       };
-    } catch (error: any) {
-      if (error.code === 11000) {
-        const dupKey = error.keyPattern?.slug ? `"${error.keyValue.slug}"` : 'a project with this name';
+    } catch (error: unknown) {
+      const err = error as { code?: number; keyPattern?: { slug?: boolean }; keyValue?: { slug?: string } };
+      if (err.code === 11000) {
+        const dupKey = err.keyPattern?.slug ? `"${err.keyValue?.slug}"` : 'a project with this name';
         throw new ConflictException(
           `Project with slug ${dupKey} already exists. Please use a different name.`,
         );
@@ -572,7 +582,7 @@ export class ProjectsService {
     await this.mongo.setArtifact(
       project.id,
       'video',
-      payload as any,
+      payload as unknown as Record<string, unknown>,
     );
     await this.updateProjectTimestamp(slug);
 
@@ -637,6 +647,68 @@ export class ProjectsService {
       success: true,
       message: 'Subtitles generated successfully.',
       data: { ...output, srtPath, status: 'ready' },
+    };
+  }
+
+  async getVoice(slug: string) {
+    const project = await this.loadProject(slug);
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id,
+      'voice',
+    );
+    if (!data) {
+      return {
+        success: true,
+        message: 'Voice plan retrieved successfully.',
+        data: { status: 'pending' as const },
+      };
+    }
+    return {
+      success: true,
+      message: 'Voice plan retrieved successfully.',
+      data,
+    };
+  }
+
+  async generateVoice(slug: string) {
+    const project = await this.loadProject(slug);
+
+    const dialoguesRaw = (await this.mongo.getArtifact(
+      project.id,
+      'dialogues',
+    )) as DialogueArtifact | null;
+
+    if (!dialoguesRaw || dialoguesRaw.status !== 'ready') {
+      throw new ConflictException(
+        'Dialogues must be generated before voice. Call /dialogues first.',
+      );
+    }
+
+    this.logger.log(`Generating voice for project: "${slug}"`);
+
+    const voiceOutput = await this.voiceAgent.execute({
+      project: {
+        topic: project.name,
+        language: project.language,
+        platform: project.platform,
+        style: project.style,
+      },
+      dialogues: dialoguesRaw,
+    });
+
+    const payload = { ...voiceOutput, status: 'ready' as const };
+
+    await this.mongo.setArtifact(project.id, 'voice', payload);
+    await this.updateProjectTimestamp(slug);
+
+    this.logger.log(
+      `Voice saved for project: "${slug}", lines=${voiceOutput.scenes.length}`,
+    );
+
+    return {
+      success: true,
+      message: 'Voice generated successfully.',
+      data: payload,
     };
   }
 

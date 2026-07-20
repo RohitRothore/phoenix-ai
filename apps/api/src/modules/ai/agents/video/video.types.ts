@@ -20,6 +20,8 @@ export interface VideoInput {
     dialogue: string;
     comedyElement: string;
   }>;
+  resolution?: string;
+  frameRate?: number;
 }
 
 export interface VideoScene {
@@ -45,6 +47,6 @@ export interface VideoOutput {
   scenes: VideoScene[];
   status: 'pending' | 'generating' | 'ready' | 'failed';
   generatedAt: string;
-  resolution: '1080x1920';
-  frameRate: 24 | 30;
+  resolution: string;
+  frameRate: number;
 }
