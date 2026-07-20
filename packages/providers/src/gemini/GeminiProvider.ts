@@ -10,7 +10,7 @@ import { BaseProvider } from '../base/BaseProvider';
 export class GeminiProvider extends BaseProvider {
   readonly provider = 'gemini';
 
-  readonly model = 'gemini-2.5-flash';
+  readonly model = 'gemini-3.5-flash';
 
   private readonly client: GoogleGenerativeAI;
 

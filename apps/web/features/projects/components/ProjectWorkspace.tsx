@@ -914,7 +914,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                 ) : null}
                 {exportPath ? (
                   <a
-                    href={`/api/projects/${project.slug}/export/download`}
+                    href={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${project.slug}/export/download`}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center justify-center rounded-lg border border-[#27272A] bg-[#18181B] px-4 py-5 text-sm font-semibold text-zinc-200 hover:bg-[#27272A]"
