@@ -75,6 +75,7 @@ export class MongoDBProjectService {
           projectId,
           type,
           data,
+          status: data.status || 'pending',
           ...extra,
           updatedAt: new Date(),
         },

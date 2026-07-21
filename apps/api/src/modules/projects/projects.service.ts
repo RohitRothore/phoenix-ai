@@ -150,9 +150,15 @@ export class ProjectsService {
         data: projectPayload,
       };
     } catch (error: unknown) {
-      const err = error as { code?: number; keyPattern?: { slug?: boolean }; keyValue?: { slug?: string } };
+      const err = error as {
+        code?: number;
+        keyPattern?: { slug?: boolean };
+        keyValue?: { slug?: string };
+      };
       if (err.code === 11000) {
-        const dupKey = err.keyPattern?.slug ? `"${err.keyValue?.slug}"` : 'a project with this name';
+        const dupKey = err.keyPattern?.slug
+          ? `"${err.keyValue?.slug}"`
+          : 'a project with this name';
         throw new ConflictException(
           `Project with slug ${dupKey} already exists. Please use a different name.`,
         );
@@ -269,8 +275,9 @@ export class ProjectsService {
     )) as DirectorArtifact | null;
 
     if (!directorRaw || directorRaw.status !== 'ready') {
-      await this.generateDirectorPlan(slug);
-      return this.generateStory(slug);
+      throw new ConflictException(
+        'Director please is not ready, please generate director plan',
+      );
     }
 
     this.logger.log(`Generating story for project: "${slug}"`);
@@ -518,7 +525,12 @@ export class ProjectsService {
       'prompts',
     )) as PromptArtifact | null;
 
-    if (!scenes || scenes.status !== 'ready' || !prompts || prompts.status !== 'ready') {
+    if (
+      !scenes ||
+      scenes.status !== 'ready' ||
+      !prompts ||
+      prompts.status !== 'ready'
+    ) {
       throw new ConflictException(
         'Scenes and render prompts must be generated before video preparation.',
       );
@@ -554,7 +566,12 @@ export class ProjectsService {
       'video',
     )) as VideoArtifact | null;
 
-    if (!video || video.status !== 'ready' || !video.scenes || video.scenes.length === 0) {
+    if (
+      !video ||
+      video.status !== 'ready' ||
+      !video.scenes ||
+      video.scenes.length === 0
+    ) {
       throw new ConflictException(
         'A video render plan must be prepared before rendering.',
       );
@@ -624,7 +641,12 @@ export class ProjectsService {
       'dialogues',
     )) as DialogueArtifact | null;
 
-    if (!scenes || scenes.status !== 'ready' || !dialogues || dialogues.status !== 'ready') {
+    if (
+      !scenes ||
+      scenes.status !== 'ready' ||
+      !dialogues ||
+      dialogues.status !== 'ready'
+    ) {
       throw new ConflictException(
         'Scenes and dialogues must be generated before subtitles.',
       );
