@@ -1,10 +1,10 @@
-import { MediaProvider } from '@phoenix/ai-core';
+import { MediaProvider } from "@phoenix/ai-core";
 import type {
   GenerateAudioRequest,
   GenerateAudioResponse,
   GenerateVideoRequest,
   GenerateVideoResponse,
-} from '@phoenix/ai-core';
+} from "@phoenix/ai-core";
 
 /**
  * Real Media Provider that integrates with actual AI services.
@@ -13,18 +13,20 @@ import type {
  * - Audio Generation: ElevenLabs, Google Cloud TTS, or Azure TTS
  */
 export class RealMediaProvider implements MediaProvider {
-  readonly provider = 'real-media';
-  readonly model = 'production-v1';
+  readonly provider = "real-media";
+  readonly model = "production-v1";
 
   private readonly videoApiKey: string;
   private readonly audioApiKey: string;
 
   constructor(config: { videoApiKey?: string; audioApiKey?: string }) {
-    this.videoApiKey = config.videoApiKey ?? '';
-    this.audioApiKey = config.audioApiKey ?? '';
+    this.videoApiKey = config.videoApiKey ?? "";
+    this.audioApiKey = config.audioApiKey ?? "";
   }
 
-  async generateAudio(request: GenerateAudioRequest): Promise<GenerateAudioResponse> {
+  async generateAudio(
+    request: GenerateAudioRequest,
+  ): Promise<GenerateAudioResponse> {
     if (!this.audioApiKey) {
       // Fallback to mock when no API key is provided
       return this.generateMockAudio(request);
@@ -33,21 +35,24 @@ export class RealMediaProvider implements MediaProvider {
     // Example integration with ElevenLabs API
     // This can be replaced with actual API call when keys are available
     try {
-      const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
-        method: 'POST',
-        headers: {
-          'Accept': 'audio/mpeg',
-          'xi-api-key': this.audioApiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: request.text,
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.5,
+      const response = await fetch(
+        "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM",
+        {
+          method: "POST",
+          headers: {
+            Accept: "audio/mpeg",
+            "xi-api-key": this.audioApiKey,
+            "Content-Type": "application/json",
           },
-        }),
-      });
+          body: JSON.stringify({
+            text: request.text,
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.5,
+            },
+          }),
+        },
+      );
 
       if (!response.ok) {
         throw new Error(`Audio generation failed: ${response.statusText}`);
@@ -61,40 +66,58 @@ export class RealMediaProvider implements MediaProvider {
         audioPath,
         duration,
         provider: this.provider,
-        model: 'elevenlabs-v2',
+        model: "elevenlabs-v2",
       };
     } catch (error) {
       // Fallback to mock on error
-      console.warn('Audio generation failed, using fallback:', (error as Error).message);
+      console.warn(
+        "Audio generation failed, using fallback:",
+        (error as Error).message,
+      );
       return this.generateMockAudio(request);
     }
   }
 
-  async generateVideo(request: GenerateVideoRequest): Promise<GenerateVideoResponse> {
+  async generateVideo(
+    request: GenerateVideoRequest,
+  ): Promise<GenerateVideoResponse> {
     if (!this.videoApiKey) {
-      // Fallback to mock when no API key is provided
+      // Fallback to mock when no API key is provided or key appears invalid
+      if (this.videoApiKey) {
+        console.warn(
+          "Video API key appears invalid, using mock provider",
+          this.videoApiKey,
+        );
+      }
       return this.generateMockVideo(request);
     }
 
     // Example integration with RunwayML API
     // This can be replaced with actual API call when keys are available
     try {
-      const response = await fetch('https://api.runwayml.com/v1/generations', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.videoApiKey}`,
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        "https://api.dev.runwayml.com/v1/text_to_video",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.videoApiKey}`,
+            "X-Runway-Version": "2024-11-06",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            promptText: request.prompt,
+            duration: 9,
+            ratio: "1280:720",
+            model: "gen4.5",
+          }),
         },
-        body: JSON.stringify({
-          prompt: request.prompt,
-          duration: request.duration,
-          resolution: request.resolution,
-          motion: request.style === 'comedy' ? 5 : 7,
-        }),
-      });
+      );
 
       if (!response.ok) {
-        throw new Error(`Video generation failed: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(
+          `Video generation failed: ${response.status} ${response.statusText} - ${errorText}`,
+        );
       }
 
       // In production, save the video file and return the path
@@ -104,7 +127,7 @@ export class RealMediaProvider implements MediaProvider {
         videoPath,
         duration: request.duration ?? 5,
         provider: this.provider,
-        model: 'runway-gen2',
+        model: "runway-gen2",
         metadata: {
           prompt: request.prompt,
           resolution: request.resolution,
@@ -113,28 +136,35 @@ export class RealMediaProvider implements MediaProvider {
       };
     } catch (error) {
       // Fallback to mock on error
-      console.warn('Video generation failed, using fallback:', (error as Error).message);
+      console.warn(
+        "Video generation failed, using fallback:",
+        (error as Error).message,
+      );
       return this.generateMockVideo(request);
     }
   }
 
-  private generateMockAudio(request: GenerateAudioRequest): GenerateAudioResponse {
+  private generateMockAudio(
+    request: GenerateAudioRequest,
+  ): GenerateAudioResponse {
     const audioPath = `audio/mock-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.mp3`;
     return {
       audioPath,
       duration: request.text.length * 0.1,
-      provider: 'mock',
-      model: 'mock-v1',
+      provider: "mock",
+      model: "mock-v1",
     };
   }
 
-  private generateMockVideo(request: GenerateVideoRequest): GenerateVideoResponse {
+  private generateMockVideo(
+    request: GenerateVideoRequest,
+  ): GenerateVideoResponse {
     const videoPath = `video/mock-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.mp4`;
     return {
       videoPath,
       duration: request.duration ?? 5,
-      provider: 'mock',
-      model: 'mock-v1',
+      provider: "mock",
+      model: "mock-v1",
       metadata: {
         prompt: request.prompt,
         resolution: request.resolution,
