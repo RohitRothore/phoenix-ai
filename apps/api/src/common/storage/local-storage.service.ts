@@ -44,6 +44,12 @@ export class LocalStorageService extends StorageService {
     return readFile(filePath);
   }
 
+  async writeBinary(inputPath: string, data: Buffer): Promise<void> {
+    const filePath = this.resolvePath(inputPath);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, data);
+  }
+
   async exists(inputPath: string): Promise<boolean> {
     return existsSync(this.resolvePath(inputPath));
   }

@@ -1,634 +1,134 @@
 # Video Engine
 
-Version: 1.0
+## Overview
+
+The Video Engine renders AI-generated images into video clips using **FFmpeg**. Each scene's image is animated with camera movements and stitched together into a final MP4.
+
+## Phase 1: Image → Video Clip (Current)
+
+In Phase 1, each scene has an AI-generated **image**. The `SceneRendererService` uses FFmpeg to:
+
+1. Take the scene's image as input.
+2. Apply a camera movement (zoom, pan, fade).
+3. Render a video clip of the specified duration.
+4. Save the clip to disk.
+5. Store the clip as a `VIDEO` Asset in MongoDB.
+
+## Camera Movements
+
+The Video Engine supports the following camera movements:
+
+| Movement | FFmpeg Filter | Description |
+|----------|---------------|-------------|
+| `zoom-in` | `zoompan` | Gradually zoom in on the image |
+| `zoom-out` | `zoompan` | Gradually zoom out from the image |
+| `pan-left` | `pad` + `trim` | Pan the view to the left |
+| `pan-right` | `pad` + `trim` | Pan the view to the right |
+| `pan-up` | `pad` + `trim` | Pan the view upward |
+| `pan-down` | `pad` + `trim` | Pan the view downward |
+| `slow-camera-motion` | `setpts` | Slow down the playback |
+| `fade` | `fade` | Fade in and out |
+| `cross-fade` | `fade` | Cross-fade transition |
+| `blur-transition` | `gblur` | Apply blur effect |
+| `static` | (none) | No camera movement |
+
+## Scene Rendering Process
+
+```
+1. Input: Scene image (PNG), scene duration, prompt (camera, lighting, mood)
+2. Determine camera movement from prompt
+3. Build FFmpeg video filter chain
+4. Execute FFmpeg: image → video clip (MP4)
+5. Save clip to storage/projects/{slug}/renders/scene-{id}.mp4
+6. Create VIDEO Asset document in MongoDB
+7. Stitch all clips into final.mp4
+```
+
+## FFmpeg Integration
+
+The `FfmpegProcessService` provides a low-level wrapper around the FFmpeg binary:
+
+```typescript
+class FfmpegProcessService {
+  async run(args: string[], description: string): Promise<void>;
+}
+```
+
+The `SceneRendererService` builds FFmpeg arguments for each scene:
+
+```typescript
+const args = [
+  '-y',
+  '-loop', '1',
+  '-i', absImagePath,
+  '-vf', filter,
+  '-c:v', 'libx264',
+  '-tune', 'stillimage',
+  '-pix_fmt', 'yuv420p',
+  '-r', String(fps),
+  '-t', String(duration),
+  '-shortest',
+  absClipPath,
+];
+```
+
+## Output Specifications
+
+| Property | Value |
+|----------|-------|
+| Resolution | 1080×1920 (portrait) |
+| FPS | 30 |
+| Codec | H.264 (libx264) |
+| Pixel Format | yuv420p |
+| Container | MP4 |
+
+## Scene Clip Assembly
+
+After all scenes are rendered, the `SceneRendererService` stitches them together:
+
+```typescript
+// Create concat file
+const concatPath = `projects/${slug}/renders/concat.txt`;
+await storage.writeText(concatPath, concatEntries.join('\n'));
+
+// Stitch clips
+await ffmpeg.run([
+  '-y',
+  '-f', 'concat',
+  '-safe', '0',
+  '-i', absConcatPath,
+  '-c', 'copy',
+  absFinalPath,
+]);
+```
 
----
+## Phase 2 Transition
 
-# Overview
+In Phase 2, the `VideoProvider` will generate full video clips directly. The `SceneRendererService` will be bypassed. The downstream pipeline (subtitles, voice, music, composition) remains unchanged.
 
-The Video Engine is responsible for transforming structured scene plans into
-high-quality animated videos.
+The transition is seamless because:
+- `VIDEO` assets from Phase 1 and Phase 2 have the same schema.
+- The `ProjectAssemblerService` stitches `VIDEO` assets regardless of their source.
+- The `AssetService` treats all video assets identically.
 
-Unlike traditional AI video generators that attempt to generate an entire video
-from a single prompt, Phoenix AI Studio generates videos scene by scene.
+## Export Engine
 
-Every generated scene becomes an independent asset that can be reviewed,
-regenerated, edited and reused.
+The `ProjectAssemblerService` assembles the final export:
 
-The Video Engine never creates stories.
+1. Takes all scene video clips.
+2. Optionally adds subtitles (SRT).
+3. Optionally adds voice audio.
+4. Optionally adds background music.
+5. Stitches everything into a final MP4.
+6. Saves to `storage/projects/{slug}/exports/`.
+7. Creates an `EXPORT` Asset document in MongoDB.
 
-The Video Engine only renders visual content.
+## Future: AI Video Providers (Phase 2)
 
----
+In Phase 2, the `VideoProvider` will:
+- Generate full video clips directly from prompts.
+- Replace the `ImageProvider` + `SceneRendererService` flow.
+- Produce `VIDEO` assets with the same schema.
+- Support the same camera movements as FFmpeg (as metadata).
 
-# Philosophy
-
-Small scenes produce better videos.
-
-Every scene should be independently generated.
-
-Every scene should be independently replaceable.
-
-Every rendered asset belongs to a project.
-
-Video generation must be deterministic whenever possible.
-
----
-
-# Responsibilities
-
-The Video Engine is responsible for
-
-- Scene rendering
-- Camera movement
-- Animation style
-- Lighting
-- Character consistency
-- Environment consistency
-- Video quality
-- Frame generation
-- Scene regeneration
-
-The Video Engine is NOT responsible for
-
-- Story generation
-- Dialogue writing
-- Character creation
-- Subtitle generation
-- Voice generation
-
----
-
-# Inputs
-
-The Video Engine receives
-
-Project
-
-↓
-
-Director Plan
-
-↓
-
-Scene Plan
-
-↓
-
-Prompt
-
-↓
-
-Character References
-
-↓
-
-Style Profile
-
-↓
-
-Camera Instructions
-
-↓
-
-Rendering Options
-
----
-
-# Output
-
-Each generated scene produces
-
-scene-001.mp4
-
-scene-002.mp4
-
-scene-003.mp4
-
-...
-
-Metadata
-
-generation.json
-
-latency.json
-
-provider.json
-
----
-
-# Supported Providers
-
-Current
-
-Gemini (future video models)
-
-OpenAI (future)
-
-Future
-
-Google Veo
-
-Runway
-
-Kling AI
-
-Pika
-
-Luma Dream Machine
-
-Stable Video Diffusion
-
-ComfyUI
-
-Custom Providers
-
-Initial local fallback
-
-FFmpeg can render a deterministic vertical MP4 from the prepared scene prompts.
-This fallback is intended to validate the complete local workflow; it creates
-prompt-based title-card scenes rather than AI-animated footage.
-
-The application must never depend directly on one provider.
-
----
-
-# Rendering Pipeline
-
-Scene
-
-↓
-
-Prompt Builder
-
-↓
-
-Video Provider
-
-↓
-
-Validation
-
-↓
-
-Storage
-
-↓
-
-Preview
-
-↓
-
-Review
-
-↓
-
-Accept
-
-↓
-
-Next Scene
-
----
-
-# Scene Rendering
-
-Every scene contains
-
-Scene ID
-
-Duration
-
-Prompt
-
-Characters
-
-Camera
-
-Lighting
-
-Environment
-
-Emotion
-
-Transitions
-
----
-
-# Prompt Structure
-
-Every prompt contains
-
-Subject
-
-Action
-
-Location
-
-Camera
-
-Style
-
-Lighting
-
-Mood
-
-Restrictions
-
-Negative Prompt
-
-Reference Characters
-
----
-
-# Camera System
-
-Supported camera styles
-
-Static
-
-Pan
-
-Tilt
-
-Orbit
-
-Zoom
-
-Tracking
-
-Drone
-
-Handheld
-
-Cinematic Dolly
-
-Camera movement should be generated by the Director Agent.
-
----
-
-# Animation Styles
-
-Pixar
-
-Stylized 3D
-
-Indian Cartoon
-
-Anime
-
-Clay
-
-Comic
-
-Low Poly
-
-Realistic
-
-Every project selects one primary style.
-
----
-
-# Character Consistency
-
-The Video Engine must receive
-
-Character ID
-
-Appearance
-
-Reference Prompt
-
-Voice Profile
-
-Color Palette
-
-Accessories
-
-Clothing
-
-The engine never invents new character appearances.
-
----
-
-# Environment Consistency
-
-Every location should maintain
-
-Lighting
-
-Weather
-
-Time
-
-Architecture
-
-Objects
-
-Color Palette
-
-Visual Mood
-
-Example
-
-Village
-
-↓
-
-Temple
-
-↓
-
-Tea Stall
-
-↓
-
-School
-
-↓
-
-Farm
-
-These remain visually consistent across episodes.
-
----
-
-# Scene Duration
-
-Target
-
-3–8 seconds
-
-Maximum
-
-15 seconds
-
-Long videos should be built from multiple scenes.
-
----
-
-# Quality Levels
-
-Draft
-
-Fast
-
-Standard
-
-High
-
-Ultra
-
-The rendering profile controls
-
-Resolution
-
-FPS
-
-Sampling
-
-Provider Options
-
----
-
-# Resolution
-
-Default
-
-1080 x 1920
-
-Supported
-
-1080 x 1920
-
-1920 x 1080
-
-1080 x 1080
-
-Future
-
-4K
-
----
-
-# Frame Rate
-
-24 FPS
-
-30 FPS
-
-60 FPS (future)
-
----
-
-# Storage
-
-storage/
-
-projects/
-
-project-id/
-
-video/
-
-scene-001.mp4
-
-scene-002.mp4
-
-scene-003.mp4
-
-metadata/
-
-scene-001.json
-
-scene-002.json
-
-generation-log.json
-
----
-
-# Metadata
-
-Every rendered scene records
-
-Scene ID
-
-Provider
-
-Model
-
-Prompt Version
-
-Prompt
-
-Generation Time
-
-Latency
-
-Seed (if supported)
-
-Resolution
-
-FPS
-
-Retry Count
-
-Created At
-
----
-
-# Validation
-
-Every generated video should be checked for
-
-Duration
-
-Resolution
-
-Encoding
-
-Corruption
-
-File Size
-
-Frame Count
-
-Missing Frames
-
----
-
-# Regeneration
-
-Users should be able to regenerate
-
-One Scene
-
-Multiple Scenes
-
-Entire Video
-
-Regeneration must never overwrite previous assets without confirmation.
-
----
-
-# Error Recovery
-
-Rendering Failed
-
-↓
-
-Retry
-
-↓
-
-Fallback Provider
-
-↓
-
-Store Failure Log
-
-↓
-
-Notify User
-
----
-
-# Performance
-
-Scene generation should execute in parallel when possible.
-
-Video stitching should occur only after all required scenes are available.
-
-Heavy operations should execute in background workers.
-
----
-
-# Future Features
-
-Scene interpolation
-
-Character reference images
-
-Motion consistency
-
-Multi-camera generation
-
-Object tracking
-
-Physics simulation
-
-Lip sync
-
-Live rendering preview
-
-GPU rendering
-
-Distributed rendering
-
-Cloud rendering
-
-Video editing timeline
-
-Frame-level editing
-
-Custom transitions
-
-Style transfer
-
-Multi-language rendering
-
-Version history
-
----
-
-# Engineering Rules
-
-The Video Engine never writes prompts.
-
-The Video Engine never creates stories.
-
-The Video Engine never modifies project metadata.
-
-The Video Engine only renders visual assets.
-
-Business logic belongs inside Pipelines.
-
-Provider logic belongs inside Providers.
-
-Storage belongs inside StorageService.
-
-The Video Engine must remain provider-independent.
-
----
-
-# Success Metrics
-
-Rendering Success Rate
-
-Average Render Time
-
-Scene Consistency
-
-Character Consistency
-
-Prompt Accuracy
-
-Resolution Quality
-
-Frame Stability
-
-Provider Reliability
-
-User Approval Rate
-
----
-
-# Future Vision
-
-The Video Engine should become a provider-independent rendering platform capable
-of producing production-quality animated content for YouTube Shorts,
-Instagram Reels, TikTok, advertisements, educational content and long-form
-animated episodes.
-
-Every future rendering provider should integrate without requiring changes to
-the application layer.
+The `FutureImageProvider` is already marked as "Future Implementation" and will be replaced by a concrete `VideoProvider` in Phase 2.

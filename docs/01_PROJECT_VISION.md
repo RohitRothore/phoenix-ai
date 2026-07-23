@@ -1,118 +1,89 @@
 # Project Vision
 
-## Mission
+## Vision Statement
 
-Build the world's best AI-powered comedy video studio.
+Phoenix AI is an AI Video Studio that transforms a single text prompt into a complete, polished MP4 video through a fully orchestrated, multi-agent AI pipeline.
 
-Phoenix AI Studio should allow a single creator to produce an unlimited number of
-consistent, high-quality comedy videos with minimal manual work.
+## Phase 1: AI Images → FFmpeg Video (Current)
 
----
+In Phase 1, the pipeline generates **AI images** for each scene. These images are then animated into video clips using **FFmpeg** with camera movements (zoom, pan, fade). The scene clips are stitched together into a final MP4.
 
-## Long-Term Vision
+**Why Phase 1?**
+- AI video generation APIs are expensive and rate-limited.
+- FFmpeg-based animation produces high-quality, controllable results.
+- The pipeline architecture is identical to Phase 2 — only the provider changes.
+- Developers and users can run the full pipeline without paid APIs (Mock mode).
 
-Phoenix is not simply an AI video generator.
+### Phase 1 Pipeline
 
-Phoenix is an AI movie studio.
+```
+Text Prompt
+    ↓
+Director Agent
+    ↓
+Story Agent
+    ↓
+Scene Planner
+    ↓
+Dialogue Generator
+    ↓
+Prompt Generator
+    ↓
+Image Generator         ← AI Images (Mock/Gemini/OpenAI/Pollinations)
+    ↓
+Image Enhancer          ← Prompt enhancement
+    ↓
+Scene Renderer          ← FFmpeg: images → video clips
+    ↓
+Subtitle Generator
+    ↓
+Voice Generator
+    ↓
+Music Generator
+    ↓
+FFmpeg Composer
+    ↓
+Final MP4
+```
 
-The software should think like a director instead of a chatbot.
+## Phase 2: AI Video Generation (Future)
 
----
+In Phase 2, the `ImageProvider` is replaced with a `VideoProvider`. The `VideoProvider` generates full video clips directly (no FFmpeg animation needed). The remaining pipeline — scene planning, dialogue, prompts, subtitles, voice, music, composition — stays exactly the same.
 
-## Principles
+### Phase 2 Pipeline (Minimal Change)
 
-AI should assist creativity.
+```
+Text Prompt
+    ↓
+Director Agent
+    ↓
+Story Agent
+    ↓
+Scene Planner
+    ↓
+Dialogue Generator
+    ↓
+Prompt Generator
+    ↓
+Video Provider        ← AI Videos (replaces ImageProvider + Scene Renderer)
+    ↓
+Subtitle Generator
+    ↓
+Voice Generator
+    ↓
+Music Generator
+    ↓
+FFmpeg Composer
+    ↓
+Final MP4
+```
 
-Users should remain directors.
+## Core Principles
 
-Every generated asset belongs to a project.
-
-Every project should be reproducible.
-
-Every generation should be explainable.
-
----
-
-## Target Users
-
-Initially
-
-Single creator.
-
-Future
-
-Small creative teams.
-
-Studios.
-
-Marketing agencies.
-
-Content creators.
-
----
-
-## Product Goals
-
-Generate stories.
-
-Generate reusable characters.
-
-Generate consistent series.
-
-Generate scene plans.
-
-Generate cinematic prompts.
-
-Generate voices.
-
-Generate subtitles.
-
-Generate finished videos.
-
----
-
-## Non Goals
-
-Phoenix is NOT:
-
-A chatbot.
-
-A prompt playground.
-
-A generic AI wrapper.
-
-A social network.
-
-A cloud storage platform.
-
----
-
-## Design Philosophy
-
-Every feature should reduce manual work.
-
-Every feature should improve output quality.
-
-Every feature should be modular.
-
-Every AI model should be replaceable.
-
----
-
-## Success Metrics
-
-Story quality.
-
-Comedy quality.
-
-Visual consistency.
-
-Character consistency.
-
-Rendering quality.
-
-Generation speed.
-
-Developer experience.
-
-Maintainability.
+1. **MongoDB-first** — All metadata, pipeline state, and asset references live in MongoDB.
+2. **Disk for binaries only** — Images, videos, audio, subtitles, and exports are stored on disk.
+3. **Provider abstraction** — Pluggable providers with a common interface.
+4. **Mock mode by default** — The project is always runnable without paid APIs.
+5. **Backward compatible** — Phase 2 requires minimal changes.
+6. **Enterprise-grade** — SOLID principles, NestJS DI, strict TypeScript, reusable interfaces.
+7. **Pipeline state management** — Every stage has pending/queued/running/completed/failed/cancelled status with timestamps, logs, retry, and resume support.

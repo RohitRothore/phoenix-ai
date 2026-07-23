@@ -34,6 +34,11 @@ export class MongoDBStorageService implements StorageService, OnModuleInit {
     throw new Error('Not implemented - use repository pattern instead');
   }
 
+  async writeBinary(_path: string, _data: Buffer): Promise<void> {
+    // MongoDB doesn't write binary data directly to paths
+    // This will be handled by the repository pattern
+  }
+
   async readBinary(_path: string): Promise<Buffer> {
     throw new Error('Not implemented - use repository pattern instead');
   }

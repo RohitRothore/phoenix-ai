@@ -12,6 +12,10 @@ import {
   Loader2,
   Clock,
   AlertTriangle,
+  Download,
+  Play,
+  RefreshCw,
+  Activity,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +36,12 @@ import {
   getDialogues,
   getPrompts,
   getVideoPlan,
+  generateImages,
+  regenerateImage,
+  getAssets,
+  renderScene,
+  renderProject,
+  getPipelineStatus,
   type Project,
   type DirectorPlan,
   type Story,
@@ -40,13 +50,25 @@ import {
   type Prompts,
   type VideoPlan,
   type Subtitles,
+  type ImageGenerationResult,
+  type Asset,
+  type SceneRenderResult,
+  type PipelineStatus,
 } from "@/features/projects/services/project.service";
 
 type ProjectWorkspaceProps = {
   project: Project;
 };
 
-type Step = "director" | "story" | "scenes" | "dialogues" | "prompts" | "video";
+type Step =
+  | "director"
+  | "story"
+  | "scenes"
+  | "dialogues"
+  | "prompts"
+  | "images"
+  | "render"
+  | "video";
 
 export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [activeStep, setActiveStep] = useState<Step>("director");
@@ -56,6 +78,8 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     scenes: false,
     dialogues: false,
     prompts: false,
+    images: false,
+    render: false,
     video: false,
   });
 
@@ -67,47 +91,55 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [videoPlan, setVideoPlan] = useState<VideoPlan | null>(null);
   const [subtitles, setSubtitles] = useState<Subtitles | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
+  const [imageResults, setImageResults] = useState<
+    ImageGenerationResult[] | null
+  >(null);
+  const [renderResults, setRenderResults] = useState<
+    SceneRenderResult[] | null
+  >(null);
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(
+    null,
+  );
+  const [assets, setAssets] = useState<Asset[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load existing plan, story, scenes, dialogues on mount
   useEffect(() => {
     const loadWorkspace = async () => {
       setError(null);
       try {
         const planRes = await getDirectorPlan(project.slug);
-        if (planRes.data && planRes.data.status === "ready") {
+        if (planRes.data && planRes.data.status === "ready")
           setPlan(planRes.data);
-        }
 
         const storyRes = await getStory(project.slug);
-        if (storyRes.data && storyRes.data.status === "ready") {
+        if (storyRes.data && storyRes.data.status === "ready")
           setStory(storyRes.data);
-        }
 
         const scenesRes = await getScenes(project.slug);
-        if (scenesRes.data && scenesRes.data.status === "ready") {
+        if (scenesRes.data && scenesRes.data.status === "ready")
           setScenes(scenesRes.data);
-        }
 
         const dialoguesRes = await getDialogues(project.slug);
-        if (dialoguesRes.data && dialoguesRes.data.status === "ready") {
+        if (dialoguesRes.data && dialoguesRes.data.status === "ready")
           setDialogues(dialoguesRes.data);
-        }
 
         const promptsRes = await getPrompts(project.slug);
-        if (promptsRes.data && promptsRes.data.status === "ready") {
+        if (promptsRes.data && promptsRes.data.status === "ready")
           setPrompts(promptsRes.data);
-        }
 
         const videoRes = await getVideoPlan(project.slug);
-        if (videoRes.data && videoRes.data.status === "ready") {
+        if (videoRes.data && videoRes.data.status === "ready")
           setVideoPlan(videoRes.data);
-        }
 
         const subtitlesRes = await getSubtitles(project.slug);
-        if (subtitlesRes.data && subtitlesRes.data.status === "ready") {
+        if (subtitlesRes.data && subtitlesRes.data.status === "ready")
           setSubtitles(subtitlesRes.data);
-        }
+
+        const assetsRes = await getAssets(project.slug);
+        if (assetsRes.data) setAssets(assetsRes.data);
+
+        const pipelineRes = await getPipelineStatus(project.slug);
+        if (pipelineRes.data) setPipelineStatus(pipelineRes.data);
       } catch (err) {
         console.error("Error loading project workspace data:", err);
       }
@@ -125,58 +157,6 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
       setError(getErrorMessage(err, "Failed to generate Director Plan."));
     } finally {
       setLoading((prev) => ({ ...prev, director: false }));
-    }
-  };
-
-  const handlePrepareVideo = async () => {
-    setLoading((prev) => ({ ...prev, video: true }));
-    setError(null);
-    try {
-      const response = await prepareVideo(project.slug);
-      setVideoPlan(response.data);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to prepare video rendering."));
-    } finally {
-      setLoading((prev) => ({ ...prev, video: false }));
-    }
-  };
-
-  const handleRenderVideo = async () => {
-    setLoading((prev) => ({ ...prev, video: true }));
-    setError(null);
-    try {
-      const response = await renderVideo(project.slug);
-      setVideoPlan(response.data);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to render the local fallback video."));
-    } finally {
-      setLoading((prev) => ({ ...prev, video: false }));
-    }
-  };
-
-  const handleGenerateSubtitles = async () => {
-    setLoading((prev) => ({ ...prev, video: true }));
-    setError(null);
-    try {
-      const response = await generateSubtitles(project.slug);
-      setSubtitles(response.data);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to generate subtitles."));
-    } finally {
-      setLoading((prev) => ({ ...prev, video: false }));
-    }
-  };
-
-  const handleExportVideo = async () => {
-    setLoading((prev) => ({ ...prev, video: true }));
-    setError(null);
-    try {
-      const response = await exportVideo(project.slug);
-      setExportPath(response.data.path);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to export the captioned video."));
-    } finally {
-      setLoading((prev) => ({ ...prev, video: false }));
     }
   };
 
@@ -232,13 +212,176 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     }
   };
 
+  const handleGenerateImages = async () => {
+    setLoading((prev) => ({ ...prev, images: true }));
+    setError(null);
+    try {
+      const response = await generateImages(project.slug);
+      setImageResults(response.data);
+      const assetsRes = await getAssets(project.slug, "IMAGE");
+      setAssets(assetsRes.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate images."));
+    } finally {
+      setLoading((prev) => ({ ...prev, images: false }));
+    }
+  };
+
+  const handleRegenerateImage = async (sceneId: string) => {
+    setLoading((prev) => ({ ...prev, images: true }));
+    setError(null);
+    try {
+      const response = await regenerateImage(project.slug, sceneId);
+      if (imageResults) {
+        setImageResults(
+          imageResults.map((r) => (r.sceneId === sceneId ? response.data : r)),
+        );
+      }
+      const assetsRes = await getAssets(project.slug, "IMAGE");
+      setAssets(assetsRes.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to regenerate image."));
+    } finally {
+      setLoading((prev) => ({ ...prev, images: false }));
+    }
+  };
+
+  const handleRenderScene = async (sceneId: string) => {
+    setLoading((prev) => ({ ...prev, render: true }));
+    setError(null);
+    try {
+      const response = await renderScene(project.slug, sceneId);
+      setRenderResults((prev) => {
+        const existing = prev ?? [];
+        const filtered = existing.filter((r) => r.sceneId !== sceneId);
+        return [...filtered, response.data];
+      });
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to render scene."));
+    } finally {
+      setLoading((prev) => ({ ...prev, render: false }));
+    }
+  };
+
+  const handleRenderProject = async () => {
+    setLoading((prev) => ({ ...prev, render: true }));
+    setError(null);
+    try {
+      const response = await renderProject(project.slug);
+      setRenderResults(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to render project."));
+    } finally {
+      setLoading((prev) => ({ ...prev, render: false }));
+    }
+  };
+
+  const handleRefreshPipeline = async () => {
+    try {
+      const pipelineRes = await getPipelineStatus(project.slug);
+      setPipelineStatus(pipelineRes.data);
+      const assetsRes = await getAssets(project.slug);
+      setAssets(assetsRes.data);
+    } catch (err) {
+      console.error("Failed to refresh pipeline status:", err);
+    }
+  };
+
+  const handlePrepareVideo = async () => {
+    setLoading((prev) => ({ ...prev, render: true }));
+    setError(null);
+    try {
+      const response = await prepareVideo(project.slug);
+      setVideoPlan(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to prepare video rendering."));
+    } finally {
+      setLoading((prev) => ({ ...prev, render: false }));
+    }
+  };
+
+  const handleRenderVideo = async () => {
+    setLoading((prev) => ({ ...prev, render: true }));
+    setError(null);
+    try {
+      const response = await renderVideo(project.slug);
+      setVideoPlan(response.data);
+    } catch (err: unknown) {
+      setError(
+        getErrorMessage(err, "Failed to render the local fallback video."),
+      );
+    } finally {
+      setLoading((prev) => ({ ...prev, render: false }));
+    }
+  };
+
+  const handleGenerateSubtitles = async () => {
+    setLoading((prev) => ({ ...prev, render: true }));
+    setError(null);
+    try {
+      const response = await generateSubtitles(project.slug);
+      setSubtitles(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate subtitles."));
+    } finally {
+      setLoading((prev) => ({ ...prev, render: false }));
+    }
+  };
+
+  const handleExportVideo = async () => {
+    setLoading((prev) => ({ ...prev, render: true }));
+    setError(null);
+    try {
+      const response = await exportVideo(project.slug);
+      setExportPath(response.data.path);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to export the captioned video."));
+    } finally {
+      setLoading((prev) => ({ ...prev, render: false }));
+    }
+  };
+
   const isStepLocked = (step: Step): boolean => {
     if (step === "story") return !plan;
     if (step === "scenes") return !story;
     if (step === "dialogues") return !scenes;
     if (step === "prompts") return !dialogues;
-    if (step === "video") return !prompts;
+    if (step === "images") return !prompts;
+    if (step === "render") return !prompts;
     return false;
+  };
+
+  const stepLabels: Record<Step, string> = {
+    director: "Director",
+    story: "Story",
+    scenes: "Scenes",
+    dialogues: "Dialogue",
+    prompts: "Prompts",
+    images: "AI Images",
+    render: "Render",
+    video: "Video",
+  };
+
+  const stepIcons: Record<Step, React.ReactNode> = {
+    director: <Compass className="size-3.5 text-[#A78BFA]" />,
+    story: <FileText className="size-3.5 text-[#A78BFA]" />,
+    scenes: <Film className="size-3.5 text-[#A78BFA]" />,
+    dialogues: <BookOpenText className="size-3.5 text-[#A78BFA]" />,
+    prompts: <Sparkles className="size-3.5 text-[#A78BFA]" />,
+    images: <Sparkles className="size-3.5 text-[#A78BFA]" />,
+    render: <Film className="size-3.5 text-[#A78BFA]" />,
+    video: <Film className="size-3.5 text-[#A78BFA]" />,
+  };
+
+  const stepCompleted: Record<Step, boolean> = {
+    director: !!plan,
+    story: !!story,
+    scenes: !!scenes,
+    dialogues: !!dialogues,
+    prompts: !!prompts,
+    images: !!imageResults,
+    render: !!renderResults,
+    video: !!videoPlan,
   };
 
   return (
@@ -258,24 +401,18 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
             {project.name}
           </h2>
           <p className="text-sm text-zinc-400">
-            Style: <span className="text-zinc-200">{project.style}</span> | Lang:{" "}
-            <span className="text-zinc-200">{project.language}</span> | Platform:{" "}
-            <span className="text-zinc-200">{project.platform}</span>
+            Style: <span className="text-zinc-200">{project.style}</span> |
+            Lang: <span className="text-zinc-200">{project.language}</span> |
+            Platform: <span className="text-zinc-200">{project.platform}</span>
           </p>
         </div>
 
         {/* Horizontal Navigation Steps */}
         <div className="flex items-center gap-2 rounded-xl border border-[#27272A] bg-[#18181B] p-1.5 self-start md:self-auto">
-          {(["director", "story", "scenes", "dialogues", "prompts", "video"] as Step[]).map((step) => {
+          {(Object.keys(stepLabels) as Step[]).map((step) => {
             const locked = isStepLocked(step);
             const active = activeStep === step;
-            const completed =
-              (step === "director" && !!plan) ||
-              (step === "story" && !!story) ||
-              (step === "scenes" && !!scenes) ||
-              (step === "dialogues" && !!dialogues) ||
-              (step === "prompts" && !!prompts) ||
-              (step === "video" && !!videoPlan);
+            const completed = stepCompleted[step];
 
             return (
               <button
@@ -286,8 +423,8 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                   active
                     ? "bg-[#7C3AED] text-white shadow-lg shadow-[#7C3AED]/20"
                     : locked
-                    ? "text-zinc-600 cursor-not-allowed opacity-50"
-                    : "text-zinc-400 hover:bg-[#27272A] hover:text-white"
+                      ? "text-zinc-600 cursor-not-allowed opacity-50"
+                      : "text-zinc-400 hover:bg-[#27272A] hover:text-white"
                 }`}
               >
                 {completed ? (
@@ -295,21 +432,9 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                 ) : locked ? (
                   <Lock className="size-3.5" />
                 ) : (
-                  <Sparkles className="size-3.5 text-[#A78BFA]" />
+                  stepIcons[step]
                 )}
-                <span>
-                  {step === "director"
-                    ? "Director"
-                    : step === "story"
-                    ? "Story"
-                    : step === "scenes"
-                    ? "Scenes"
-                    : step === "dialogues"
-                    ? "Dialogue"
-                    : step === "prompts"
-                    ? "Prompts"
-                    : "Video"}
-                </span>
+                <span>{stepLabels[step]}</span>
               </button>
             );
           })}
@@ -328,20 +453,23 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
       <div className="flex-1 min-h-[400px]">
         {activeStep === "director" && (
           <div className="grid gap-6 md:grid-cols-3">
-            {/* Left Info Panel */}
             <div className="space-y-6 md:col-span-1">
               <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
                 <div className="flex items-center gap-3">
                   <Compass className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">Director Plan</h3>
+                  <h3 className="text-lg font-bold text-white">
+                    Director Plan
+                  </h3>
                 </div>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  The Director AI analyzes your project topic, humor style, and target platform to establish creative boundaries, comedic tone, pacing, and visual look.
+                  The Director AI analyzes your project topic, humor style, and
+                  target platform to establish creative boundaries, comedic
+                  tone, pacing, and visual look.
                 </p>
                 {!plan ? (
                   <Button
                     onClick={handleGenerateDirectorPlan}
-                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5 transition-all active:scale-[0.98]"
+                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
                     disabled={loading.director}
                   >
                     {loading.director ? (
@@ -379,31 +507,48 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               </div>
             </div>
 
-            {/* Right Display Panel */}
             <div className="md:col-span-2">
               {plan ? (
                 <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-6">
                   <div className="grid gap-6 sm:grid-cols-2">
                     <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Genre</p>
-                      <p className="text-lg font-bold text-white">{plan.genre}</p>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                        Genre
+                      </p>
+                      <p className="text-lg font-bold text-white">
+                        {plan.genre}
+                      </p>
                     </div>
                     <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Target Audience</p>
-                      <p className="text-lg font-bold text-white">{plan.targetAudience}</p>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                        Target Audience
+                      </p>
+                      <p className="text-lg font-bold text-white">
+                        {plan.targetAudience}
+                      </p>
                     </div>
                     <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Tone</p>
-                      <p className="text-lg font-bold text-white">{plan.tone}</p>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                        Tone
+                      </p>
+                      <p className="text-lg font-bold text-white">
+                        {plan.tone}
+                      </p>
                     </div>
                     <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Pacing</p>
-                      <p className="text-lg font-bold text-white">{plan.pacing}</p>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                        Pacing
+                      </p>
+                      <p className="text-lg font-bold text-white">
+                        {plan.pacing}
+                      </p>
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">Story Structure</h4>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
+                      Story Structure
+                    </h4>
                     <div className="flex flex-wrap items-center gap-2">
                       {plan.storyStructure.map((step, idx) => (
                         <div key={idx} className="flex items-center gap-2">
@@ -419,15 +564,24 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                   </div>
 
                   <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                    <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Visual Style</p>
-                    <p className="text-sm text-zinc-300 leading-relaxed">{plan.visualStyle}</p>
+                    <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                      Visual Style
+                    </p>
+                    <p className="text-sm text-zinc-300 leading-relaxed">
+                      {plan.visualStyle}
+                    </p>
                   </div>
 
                   <div className="space-y-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">Comedic Mechanics</h4>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
+                      Comedic Mechanics
+                    </h4>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {plan.comedyMechanics.map((mech, idx) => (
-                        <div key={idx} className="flex items-center gap-2.5 rounded-lg bg-[#18181B]/50 px-3.5 py-2.5 text-sm text-zinc-300 border border-[#27272A]/40">
+                        <div
+                          key={idx}
+                          className="flex items-center gap-2.5 rounded-lg bg-[#18181B]/50 px-3.5 py-2.5 text-sm text-zinc-300 border border-[#27272A]/40"
+                        >
                           <span className="size-1.5 rounded-full bg-[#A78BFA]" />
                           <span>{mech}</span>
                         </div>
@@ -436,16 +590,23 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                   </div>
 
                   <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                    <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Content Constraints & Guidelines</p>
-                    <p className="text-sm text-zinc-300 leading-relaxed">{plan.contentGuidelines}</p>
+                    <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                      Content Constraints & Guidelines
+                    </p>
+                    <p className="text-sm text-zinc-300 leading-relaxed">
+                      {plan.contentGuidelines}
+                    </p>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
                   <Compass className="size-12 text-zinc-600 mb-4 stroke-1 animate-pulse" />
-                  <h3 className="text-lg font-bold text-zinc-300 mb-1">Director Plan Required</h3>
+                  <h3 className="text-lg font-bold text-zinc-300 mb-1">
+                    Director Plan Required
+                  </h3>
                   <p className="text-sm text-zinc-500 max-w-sm">
-                    Generate the director plan first to lay the foundation of the storytelling guidelines.
+                    Generate the director plan first to lay the foundation of
+                    the storytelling guidelines.
                   </p>
                 </div>
               )}
@@ -455,7 +616,6 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
 
         {activeStep === "story" && (
           <div className="grid gap-6 md:grid-cols-3">
-            {/* Left Info Panel */}
             <div className="space-y-6 md:col-span-1">
               <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
                 <div className="flex items-center gap-3">
@@ -463,7 +623,9 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                   <h3 className="text-lg font-bold text-white">Story Writer</h3>
                 </div>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  The Story AI reads the Director Plan constraints and writes a structured storyline complete with attention hook, character definitions, premise, summary, and funny punchlines.
+                  The Story AI reads the Director Plan constraints and writes a
+                  structured storyline complete with attention hook, character
+                  definitions, premise, summary, and funny punchlines.
                 </p>
                 {!story ? (
                   <Button
@@ -506,13 +668,16 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               </div>
             </div>
 
-            {/* Right Display Panel */}
             <div className="md:col-span-2">
               {story ? (
                 <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-6">
                   <div>
-                    <span className="text-xs uppercase tracking-widest text-[#A78BFA] font-bold">Script Title</span>
-                    <h3 className="text-2xl font-black text-white mt-1">{story.title}</h3>
+                    <span className="text-xs uppercase tracking-widest text-[#A78BFA] font-bold">
+                      Script Title
+                    </span>
+                    <h3 className="text-2xl font-black text-white mt-1">
+                      {story.title}
+                    </h3>
                   </div>
 
                   <div className="space-y-1.5 p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
@@ -520,55 +685,83 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                       <Sparkles className="size-3.5" /> Core Comedy Hook (0-3s)
                     </p>
                     <p className="text-base font-medium text-white italic leading-relaxed">
-                      &quot;{story.hook}&quot;
+                      "{story.hook}"
                     </p>
                   </div>
 
                   <div className="space-y-4">
                     <div>
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Premise</p>
-                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">{story.premise}</p>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                        Premise
+                      </p>
+                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">
+                        {story.premise}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Story Summary</p>
-                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">{story.summary}</p>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                        Story Summary
+                      </p>
+                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">
+                        {story.summary}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Key Comedic Twist / Payoff</p>
-                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">{story.ending}</p>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+                        Key Comedic Twist / Payoff
+                      </p>
+                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">
+                        {story.ending}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Character Cast */}
                   <div className="space-y-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">Character Cast</h4>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
+                      Character Cast
+                    </h4>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {story.characters.map((char, idx) => (
-                        <div key={idx} className="p-4 rounded-xl bg-[#18181B] border border-[#27272A] space-y-2">
+                        <div
+                          key={idx}
+                          className="p-4 rounded-xl bg-[#18181B] border border-[#27272A] space-y-2"
+                        >
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-white text-sm">{char.name}</span>
+                            <span className="font-bold text-white text-sm">
+                              {char.name}
+                            </span>
                             <span className="inline-flex items-center rounded-md bg-zinc-800 px-2 py-1 text-xs font-semibold text-zinc-400">
                               {char.role}
                             </span>
                           </div>
-                          <p className="text-xs text-zinc-400 leading-relaxed">{char.personality}</p>
+                          <p className="text-xs text-zinc-400 leading-relaxed">
+                            {char.personality}
+                          </p>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Story Acts */}
                   <div className="space-y-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">Acts Flow</h4>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
+                      Acts Flow
+                    </h4>
                     <div className="space-y-3">
                       {story.acts.map((act, idx) => (
-                        <div key={idx} className="flex gap-4 p-4 rounded-xl bg-[#18181B]/40 border border-[#27272A]/50">
+                        <div
+                          key={idx}
+                          className="flex gap-4 p-4 rounded-xl bg-[#18181B]/40 border border-[#27272A]/50"
+                        >
                           <div className="flex size-7 items-center justify-center rounded-full bg-[#27272A] text-xs font-bold text-zinc-300">
                             {idx + 1}
                           </div>
                           <div className="space-y-1">
-                            <span className="text-sm font-bold text-white">{act.name}</span>
-                            <p className="text-xs text-zinc-400 leading-relaxed">{act.description}</p>
+                            <span className="text-sm font-bold text-white">
+                              {act.name}
+                            </span>
+                            <p className="text-xs text-zinc-400 leading-relaxed">
+                              {act.description}
+                            </p>
                           </div>
                         </div>
                       ))}
@@ -578,9 +771,12 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               ) : (
                 <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
                   <FileText className="size-12 text-zinc-600 mb-4 stroke-1" />
-                  <h3 className="text-lg font-bold text-zinc-300 mb-1">Story Plan Pending</h3>
+                  <h3 className="text-lg font-bold text-zinc-300 mb-1">
+                    Story Plan Pending
+                  </h3>
                   <p className="text-sm text-zinc-500 max-w-sm">
-                    Generate the story next to map characters, dialogue cues, and act structures.
+                    Generate the story next to map characters, dialogue cues,
+                    and act structures.
                   </p>
                 </div>
               )}
@@ -590,15 +786,19 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
 
         {activeStep === "scenes" && (
           <div className="grid gap-6 md:grid-cols-3">
-            {/* Left Info Panel */}
             <div className="space-y-6 md:col-span-1">
               <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
                 <div className="flex items-center gap-3">
                   <Film className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">Scene Planner</h3>
+                  <h3 className="text-lg font-bold text-white">
+                    Scene Planner
+                  </h3>
                 </div>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  The Scene Planner takes the completed story acts and maps them into filmable visual segments. Each scene is complete with length, precise visual prompts for AI rendering, dialogue audio cues, and comedy beats.
+                  The Scene Planner takes the completed story acts and maps them
+                  into filmable visual segments. Each scene is complete with
+                  length, precise visual prompts for AI rendering, dialogue
+                  audio cues, and comedy beats.
                 </p>
                 {!scenes ? (
                   <Button
@@ -641,7 +841,6 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               </div>
             </div>
 
-            {/* Right Display Panel */}
             <div className="md:col-span-2">
               {scenes ? (
                 <div className="space-y-4">
@@ -650,28 +849,31 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                       key={scene.id}
                       className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
                     >
-                      {/* Top bar info */}
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#27272A]/50 pb-3">
                         <div className="flex items-center gap-3">
                           <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
                             #{scene.id}
                           </span>
-                          <h4 className="font-bold text-white text-base">{scene.title}</h4>
+                          <h4 className="font-bold text-white text-base">
+                            {scene.title}
+                          </h4>
                         </div>
                         <div className="flex items-center gap-3 text-xs text-zinc-400">
                           <span className="rounded-md bg-zinc-800/80 px-2 py-1 text-zinc-300">
                             {scene.act}
                           </span>
                           <span className="flex items-center gap-1">
-                            <Clock className="size-3.5 text-zinc-500" /> {scene.duration}s
+                            <Clock className="size-3.5 text-zinc-500" />{" "}
+                            {scene.duration}s
                           </span>
                         </div>
                       </div>
 
-                      {/* Scene descriptions */}
                       <div className="space-y-3.5">
                         <div className="space-y-1">
-                          <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Visual Action Description</span>
+                          <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                            Visual Action Description
+                          </span>
                           <p className="text-sm text-zinc-300 leading-relaxed">
                             {scene.description}
                           </p>
@@ -679,7 +881,9 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
 
                         {scene.dialogue && (
                           <div className="space-y-1 p-3 rounded-lg bg-[#18181B] border border-[#27272A]/60 font-serif">
-                            <span className="text-[10px] uppercase tracking-widest text-[#A78BFA] font-bold block mb-1">Dialogue / Narration</span>
+                            <span className="text-[10px] uppercase tracking-widest text-[#A78BFA] font-bold block mb-1">
+                              Dialogue / Narration
+                            </span>
                             <p className="text-sm text-white italic leading-relaxed">
                               {scene.dialogue}
                             </p>
@@ -687,7 +891,9 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
                         )}
 
                         <div className="space-y-1 p-3 rounded-lg bg-[#0a0a0b] border border-[#27272A]/40">
-                          <span className="text-[10px] uppercase tracking-widest text-[#7C3AED] font-bold block mb-1">AI Video Generation Prompt</span>
+                          <span className="text-[10px] uppercase tracking-widest text-[#7C3AED] font-bold block mb-1">
+                            AI Video Generation Prompt
+                          </span>
                           <code className="text-xs text-zinc-400 leading-relaxed block break-words whitespace-pre-wrap select-all selection:bg-[#7C3AED]/30">
                             {scene.visualPrompt}
                           </code>
@@ -706,9 +912,12 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               ) : (
                 <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
                   <Film className="size-12 text-zinc-600 mb-4 stroke-1 animate-pulse" />
-                  <h3 className="text-lg font-bold text-zinc-300 mb-1">Scenes Pending</h3>
+                  <h3 className="text-lg font-bold text-zinc-300 mb-1">
+                    Scenes Pending
+                  </h3>
                   <p className="text-sm text-zinc-500 max-w-sm">
-                    Plan scenes to generate exact prompt specifications for rendering videos.
+                    Plan scenes to generate exact prompt specifications for
+                    rendering videos.
                   </p>
                 </div>
               )}
@@ -718,15 +927,18 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
 
         {activeStep === "dialogues" && (
           <div className="grid gap-6 md:grid-cols-3">
-            {/* Left Info Panel */}
             <div className="space-y-6 md:col-span-1">
               <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
                 <div className="flex items-center gap-3">
                   <BookOpenText className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">Dialogue Writer</h3>
+                  <h3 className="text-lg font-bold text-white">
+                    Dialogue Writer
+                  </h3>
                 </div>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  The Dialogue AI writes natural, character-specific dialogue for every scene. Each character gets a distinct voice, emotion, and comedic timing.
+                  The Dialogue AI writes natural, character-specific dialogue
+                  for every scene. Each character gets a distinct voice,
+                  emotion, and comedic timing.
                 </p>
                 {!dialogues ? (
                   <Button
@@ -769,12 +981,13 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               </div>
             </div>
 
-            {/* Right Display Panel */}
             <div className="md:col-span-2">
               {dialogues ? (
                 <div className="space-y-6">
                   {dialogues.scenes.map((sceneD) => {
-                    const sceneInfo = scenes?.scenes.find((s) => s.id === sceneD.id);
+                    const sceneInfo = scenes?.scenes.find(
+                      (s) => s.id === sceneD.id,
+                    );
                     return (
                       <div
                         key={sceneD.id}
@@ -823,9 +1036,12 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               ) : (
                 <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
                   <BookOpenText className="size-12 text-zinc-600 mb-4 stroke-1 animate-pulse" />
-                  <h3 className="text-lg font-bold text-zinc-300 mb-1">Dialogues Pending</h3>
+                  <h3 className="text-lg font-bold text-zinc-300 mb-1">
+                    Dialogues Pending
+                  </h3>
                   <p className="text-sm text-zinc-500 max-w-sm">
-                    Generate scenes first, then write character dialogue for each scene.
+                    Generate scenes first, then write character dialogue for
+                    each scene.
                   </p>
                 </div>
               )}
@@ -839,18 +1055,35 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               <div className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-6">
                 <div className="flex items-center gap-3">
                   <Sparkles className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">Prompt Builder</h3>
+                  <h3 className="text-lg font-bold text-white">
+                    Prompt Builder
+                  </h3>
                 </div>
                 <p className="text-sm leading-relaxed text-zinc-400">
-                  Finalize each scene into a render-ready prompt with camera, lighting, mood, and visual exclusions.
+                  Finalize each scene into a render-ready prompt with camera,
+                  lighting, mood, and visual exclusions.
                 </p>
                 <Button
                   onClick={handleGeneratePrompts}
-                  className={prompts ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]" : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"}
+                  className={
+                    prompts
+                      ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
+                      : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
+                  }
                   disabled={loading.prompts}
                   variant={prompts ? "outline" : "default"}
                 >
-                  {loading.prompts ? <><Loader2 className="mr-2 size-4 animate-spin" />Building Prompts...</> : <><Sparkles className="mr-2 size-4" />{prompts ? "Regenerate Prompts" : "Build Render Prompts"}</>}
+                  {loading.prompts ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Building Prompts...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 size-4" />
+                      {prompts ? "Regenerate Prompts" : "Build Render Prompts"}
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -859,17 +1092,28 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               {prompts ? (
                 <div className="space-y-4">
                   {prompts.scenes.map((scene) => (
-                    <article key={scene.id} className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5">
+                    <article
+                      key={scene.id}
+                      className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5"
+                    >
                       <div className="flex items-center gap-3 border-b border-[#27272A]/50 pb-3">
-                        <span className="flex size-7 items-center justify-center rounded-lg border border-[#7C3AED]/20 bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA]">#{scene.id}</span>
-                        <h4 className="font-bold text-white">{scenes?.scenes.find((item) => item.id === scene.id)?.title ?? `Scene ${scene.id}`}</h4>
+                        <span className="flex size-7 items-center justify-center rounded-lg border border-[#7C3AED]/20 bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA]">
+                          #{scene.id}
+                        </span>
+                        <h4 className="font-bold text-white">
+                          {scenes?.scenes.find((item) => item.id === scene.id)
+                            ?.title ?? `Scene ${scene.id}`}
+                        </h4>
                       </div>
                       <PromptField label="Render Prompt" value={scene.prompt} />
                       <div className="grid gap-3 sm:grid-cols-2">
                         <PromptField label="Camera" value={scene.camera} />
                         <PromptField label="Lighting" value={scene.lighting} />
                         <PromptField label="Mood" value={scene.mood} />
-                        <PromptField label="Avoid" value={scene.negativePrompt} />
+                        <PromptField
+                          label="Avoid"
+                          value={scene.negativePrompt}
+                        />
                       </div>
                     </article>
                   ))}
@@ -877,8 +1121,442 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               ) : (
                 <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
                   <Sparkles className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
-                  <h3 className="mb-1 text-lg font-bold text-zinc-300">Render Prompts Pending</h3>
-                  <p className="max-w-sm text-sm text-zinc-500">Generate dialogue first, then finalize the visual direction for every scene.</p>
+                  <h3 className="mb-1 text-lg font-bold text-zinc-300">
+                    Render Prompts Pending
+                  </h3>
+                  <p className="max-w-sm text-sm text-zinc-500">
+                    Generate dialogue first, then finalize the visual direction
+                    for every scene.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeStep === "images" && (
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="space-y-6 md:col-span-1">
+              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Sparkles className="size-5 text-[#A78BFA]" />
+                  <h3 className="text-lg font-bold text-white">
+                    AI Image Generator
+                  </h3>
+                </div>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  Generate AI images for each scene using the approved render
+                  prompts. In Phase 1, mock images are generated automatically
+                  when no API key is available. Each image is stored as an Asset
+                  in MongoDB.
+                </p>
+                {!imageResults ? (
+                  <Button
+                    onClick={handleGenerateImages}
+                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
+                    disabled={loading.images}
+                  >
+                    {loading.images ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        Generating Images...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-2 size-4" />
+                        Generate AI Images
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleGenerateImages}
+                    variant="outline"
+                    className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-5"
+                    disabled={loading.images}
+                  >
+                    {loading.images ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-2 size-4 text-[#A78BFA]" />
+                        Regenerate All Images
+                      </>
+                    )}
+                  </Button>
+                )}
+                <Button
+                  onClick={handleRefreshPipeline}
+                  variant="outline"
+                  className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-3"
+                >
+                  <Activity className="mr-2 size-4" />
+                  Refresh Status
+                </Button>
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              {imageResults ? (
+                <div className="space-y-4">
+                  {imageResults.map((result) => {
+                    const scene = scenes?.scenes.find(
+                      (s) => String(s.id) === result.sceneId,
+                    );
+                    const prompt = prompts?.scenes.find(
+                      (p) => p.id === Number(result.sceneId),
+                    );
+                    const asset = assets?.find(
+                      (a) => a.sceneId === result.sceneId && a.type === "IMAGE",
+                    );
+                    return (
+                      <div
+                        key={result.sceneId}
+                        className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
+                      >
+                        <div className="flex items-center justify-between border-b border-[#27272A]/50 pb-3">
+                          <div className="flex items-center gap-3">
+                            <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
+                              #{result.sceneId}
+                            </span>
+                            <h4 className="font-bold text-white text-base">
+                              {scene?.title ?? `Scene ${result.sceneId}`}
+                            </h4>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-zinc-400">
+                              Provider:{" "}
+                              <span className="text-zinc-200 font-semibold">
+                                {result.provider}
+                              </span>
+                            </span>
+                            <span
+                              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                                asset?.status === "ready"
+                                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                                  : asset?.status === "failed"
+                                    ? "border-rose-500/20 bg-rose-500/10 text-rose-400"
+                                    : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                              }`}
+                            >
+                              {asset?.status ?? "pending"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <div className="sm:col-span-1">
+                            {result.imageUrl ? (
+                              <img
+                                src={result.imageUrl}
+                                alt={`Scene ${result.sceneId}`}
+                                className="w-full rounded-xl border border-[#27272A] object-cover aspect-square"
+                              />
+                            ) : (
+                              <div className="flex aspect-square items-center justify-center rounded-xl border-2 border-dashed border-[#27272A] bg-[#18181B]">
+                                <Sparkles className="size-8 text-zinc-600" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="sm:col-span-2 space-y-3">
+                            <div>
+                              <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                Prompt
+                              </span>
+                              <p className="text-sm text-zinc-300 leading-relaxed mt-1">
+                                {prompt?.prompt ??
+                                  scene?.visualPrompt ??
+                                  "No prompt available"}
+                              </p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                              <div>
+                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                  Model
+                                </span>
+                                <p className="text-zinc-300">{result.model}</p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                  Seed
+                                </span>
+                                <p className="text-zinc-300">
+                                  {result.seed ?? "N/A"}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                  Resolution
+                                </span>
+                                <p className="text-zinc-300">
+                                  {result.width}×{result.height}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                  Generation Time
+                                </span>
+                                <p className="text-zinc-300">
+                                  {result.generationTime}ms
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                              <Button
+                                onClick={() =>
+                                  handleRegenerateImage(result.sceneId)
+                                }
+                                variant="outline"
+                                size="sm"
+                                className="border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f]"
+                                disabled={loading.images}
+                              >
+                                <RefreshCw className="mr-1 size-3" />
+                                Regenerate
+                              </Button>
+                              {asset?.path ? (
+                                <a
+                                  href={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${project.slug}/assets`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center justify-center rounded-lg border border-[#27272A] bg-[#18181B] px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-[#27272A]"
+                                >
+                                  <Download className="mr-1 size-3" />
+                                  Download
+                                </a>
+                              ) : null}
+                              <Button
+                                onClick={() =>
+                                  handleRenderScene(result.sceneId)
+                                }
+                                variant="outline"
+                                size="sm"
+                                className="border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f]"
+                                disabled={loading.render}
+                              >
+                                <Play className="mr-1 size-3" />
+                                Render Scene
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
+                  <Sparkles className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
+                  <h3 className="mb-1 text-lg font-bold text-zinc-300">
+                    AI Images Pending
+                  </h3>
+                  <p className="max-w-sm text-sm text-zinc-500">
+                    Generate render prompts first, then create AI images for
+                    each scene.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeStep === "render" && (
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="space-y-6 md:col-span-1">
+              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Film className="size-5 text-[#A78BFA]" />
+                  <h3 className="text-lg font-bold text-white">
+                    Scene Renderer
+                  </h3>
+                </div>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  Render AI images into video clips using FFmpeg with camera
+                  movements (zoom, pan, fade). Each scene video is stored as an
+                  Asset. Later, these will be replaced by AI-generated videos.
+                </p>
+                <Button
+                  onClick={handleRenderProject}
+                  className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
+                  disabled={loading.render || !imageResults}
+                >
+                  {loading.render ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Rendering All...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="mr-2 size-4" />
+                      Render All Scenes
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleRefreshPipeline}
+                  variant="outline"
+                  className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-3"
+                >
+                  <Activity className="mr-2 size-4" />
+                  Refresh Pipeline
+                </Button>
+
+                {pipelineStatus ? (
+                  <div className="space-y-2 pt-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                      Pipeline Status
+                    </h4>
+                    {pipelineStatus.stages.map((stage) => (
+                      <div
+                        key={stage.stage}
+                        className="flex items-center justify-between text-xs"
+                      >
+                        <span className="text-zinc-400">{stage.stage}</span>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                            stage.status === "completed"
+                              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                              : stage.status === "failed"
+                                ? "border-rose-500/20 bg-rose-500/10 text-rose-400"
+                                : stage.status === "running"
+                                  ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
+                                  : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                          }`}
+                        >
+                          {stage.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              {renderResults ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
+                    {renderResults.length} scene videos rendered · Resolution:
+                    1080×1920 · 30 FPS
+                  </div>
+                  {renderResults.map((result) => {
+                    const scene = scenes?.scenes.find(
+                      (s) => String(s.id) === result.sceneId,
+                    );
+                    const videoAsset = assets?.find(
+                      (a) => a.sceneId === result.sceneId && a.type === "VIDEO",
+                    );
+                    return (
+                      <div
+                        key={result.sceneId}
+                        className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
+                      >
+                        <div className="flex items-center justify-between border-b border-[#27272A]/50 pb-3">
+                          <div className="flex items-center gap-3">
+                            <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
+                              #{result.sceneId}
+                            </span>
+                            <h4 className="font-bold text-white text-base">
+                              {scene?.title ?? `Scene ${result.sceneId}`}
+                            </h4>
+                          </div>
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                              videoAsset?.status === "ready"
+                                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                                : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                            }`}
+                          >
+                            {videoAsset?.status ?? "pending"}
+                          </span>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <div className="sm:col-span-1">
+                            <video
+                              src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${project.slug}/assets`}
+                              className="w-full rounded-xl border border-[#27272A] object-cover aspect-video bg-[#18181B]"
+                              controls
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2 space-y-3">
+                            <div>
+                              <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                Rendered Video
+                              </span>
+                              <p className="text-sm text-zinc-300 leading-relaxed mt-1">
+                                {result.videoPath}
+                              </p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                              <div>
+                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                  Duration
+                                </span>
+                                <p className="text-zinc-300">
+                                  {result.duration}s
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                  Resolution
+                                </span>
+                                <p className="text-zinc-300">
+                                  {result.width}×{result.height}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                  FPS
+                                </span>
+                                <p className="text-zinc-300">{result.fps}</p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                                  Provider
+                                </span>
+                                <p className="text-zinc-300">
+                                  {videoAsset?.provider ?? "ffmpeg"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                              <Button
+                                onClick={() =>
+                                  handleRenderScene(result.sceneId)
+                                }
+                                variant="outline"
+                                size="sm"
+                                className="border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f]"
+                                disabled={loading.render}
+                              >
+                                <RefreshCw className="mr-1 size-3" />
+                                Re-render
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
+                  <Film className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
+                  <h3 className="mb-1 text-lg font-bold text-zinc-300">
+                    Scene Rendering Pending
+                  </h3>
+                  <p className="max-w-sm text-sm text-zinc-500">
+                    Generate AI images first, then render them into video clips
+                    with FFmpeg.
+                  </p>
                 </div>
               )}
             </div>
@@ -891,25 +1569,77 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               <div className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-6">
                 <div className="flex items-center gap-3">
                   <Film className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">Video Render Plan</h3>
+                  <h3 className="text-lg font-bold text-white">
+                    Video Render Plan
+                  </h3>
                 </div>
                 <p className="text-sm leading-relaxed text-zinc-400">
-                  Create independently renderable scene jobs from the approved prompts. A video provider will execute these jobs in the next milestone.
+                  Create independently renderable scene jobs from the approved
+                  prompts. A video provider will execute these jobs in the next
+                  milestone.
                 </p>
-                <Button onClick={handlePrepareVideo} className={videoPlan ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]" : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"} disabled={loading.video} variant={videoPlan ? "outline" : "default"}>
-                  {loading.video ? <><Loader2 className="mr-2 size-4 animate-spin" />Preparing Jobs...</> : <><Film className="mr-2 size-4" />{videoPlan ? "Rebuild Render Plan" : "Prepare Video Jobs"}</>}
+                <Button
+                  onClick={handlePrepareVideo}
+                  className={
+                    videoPlan
+                      ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
+                      : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
+                  }
+                  disabled={loading.render}
+                  variant={videoPlan ? "outline" : "default"}
+                >
+                  {loading.render ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Preparing Jobs...
+                    </>
+                  ) : (
+                    <>
+                      <Film className="mr-2 size-4" />
+                      {videoPlan ? "Rebuild Render Plan" : "Prepare Video Jobs"}
+                    </>
+                  )}
                 </Button>
                 {videoPlan ? (
-                  <Button onClick={handleRenderVideo} className="w-full bg-emerald-600 py-5 font-semibold text-white hover:bg-emerald-500" disabled={loading.video || videoPlan.renderStatus === "completed"}>
-                    {loading.video ? <><Loader2 className="mr-2 size-4 animate-spin" />Rendering Video...</> : videoPlan.renderStatus === "completed" ? "Video Rendered" : <><Film className="mr-2 size-4" />Render Local MP4</>}
+                  <Button
+                    onClick={handleRenderVideo}
+                    className="w-full bg-emerald-600 py-5 font-semibold text-white hover:bg-emerald-500"
+                    disabled={
+                      loading.render || videoPlan.renderStatus === "completed"
+                    }
+                  >
+                    {loading.render ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        Rendering Video...
+                      </>
+                    ) : videoPlan.renderStatus === "completed" ? (
+                      "Video Rendered"
+                    ) : (
+                      <>
+                        <Film className="mr-2 size-4" />
+                        Render Local MP4
+                      </>
+                    )}
                   </Button>
                 ) : null}
-                <Button onClick={handleGenerateSubtitles} className="w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]" disabled={loading.video || Boolean(subtitles)} variant="outline">
+                <Button
+                  onClick={handleGenerateSubtitles}
+                  className="w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
+                  disabled={loading.render || Boolean(subtitles)}
+                  variant="outline"
+                >
                   {subtitles ? "Subtitles Generated" : "Generate Subtitles"}
                 </Button>
                 {videoPlan?.renderStatus === "completed" && subtitles ? (
-                  <Button onClick={handleExportVideo} className="w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]" disabled={loading.video || Boolean(exportPath)}>
-                    {exportPath ? "Captioned Export Created" : "Export Captioned MP4"}
+                  <Button
+                    onClick={handleExportVideo}
+                    className="w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
+                    disabled={loading.render || Boolean(exportPath)}
+                  >
+                    {exportPath
+                      ? "Captioned Export Created"
+                      : "Export Captioned MP4"}
                   </Button>
                 ) : null}
                 {exportPath ? (
@@ -928,25 +1658,49 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
               {videoPlan ? (
                 <div className="space-y-4">
                   <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
-                    {videoPlan.resolution} · {videoPlan.frameRate} FPS · {videoPlan.renderStatus === "completed" ? `Rendered: ${videoPlan.finalPath}` : `${videoPlan.scenes.length} scene jobs pending render`}
+                    {videoPlan.resolution} · {videoPlan.frameRate} FPS ·{" "}
+                    {videoPlan.renderStatus === "completed"
+                      ? `Rendered: ${videoPlan.finalPath}`
+                      : `${videoPlan.scenes.length} scene jobs pending render`}
                   </div>
-                  {subtitles ? <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">Captions: {subtitles.cues.length} cues · {subtitles.srtPath}</div> : null}
-                  {exportPath ? <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">Final export: {exportPath}</div> : null}
+                  {subtitles ? (
+                    <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
+                      Captions: {subtitles.cues.length} cues ·{" "}
+                      {subtitles.srtPath}
+                    </div>
+                  ) : null}
+                  {exportPath ? (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+                      Final export: {exportPath}
+                    </div>
+                  ) : null}
                   {videoPlan.scenes.map((scene) => (
-                    <article key={scene.id} className="flex items-center justify-between gap-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5">
+                    <article
+                      key={scene.id}
+                      className="flex items-center justify-between gap-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5"
+                    >
                       <div>
                         <p className="font-bold text-white">Scene {scene.id}</p>
-                        <p className="mt-1 text-xs text-zinc-500">{scene.duration}s · {scene.camera} · {scene.lighting}</p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {scene.duration}s · {scene.camera} · {scene.lighting}
+                        </p>
                       </div>
-                      <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400">{scene.status}</span>
+                      <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400">
+                        {scene.status}
+                      </span>
                     </article>
                   ))}
                 </div>
               ) : (
                 <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
                   <Film className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
-                  <h3 className="mb-1 text-lg font-bold text-zinc-300">Video Jobs Pending</h3>
-                  <p className="max-w-sm text-sm text-zinc-500">Approve render prompts to prepare scene jobs for a future video provider.</p>
+                  <h3 className="mb-1 text-lg font-bold text-zinc-300">
+                    Video Jobs Pending
+                  </h3>
+                  <p className="max-w-sm text-sm text-zinc-500">
+                    Approve render prompts to prepare scene jobs for a future
+                    video provider.
+                  </p>
                 </div>
               )}
             </div>
@@ -960,8 +1714,12 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
 function PromptField({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1 rounded-lg border border-[#27272A]/40 bg-[#0a0a0b] p-3">
-      <span className="block text-[10px] font-bold uppercase tracking-widest text-[#7C3AED]">{label}</span>
-      <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-400">{value}</p>
+      <span className="block text-[10px] font-bold uppercase tracking-widest text-[#7C3AED]">
+        {label}
+      </span>
+      <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-400">
+        {value}
+      </p>
     </div>
   );
 }

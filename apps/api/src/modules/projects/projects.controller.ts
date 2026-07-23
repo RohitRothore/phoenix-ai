@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -118,11 +118,57 @@ export class ProjectsController {
     const { buffer, filename, contentType } =
       await this.projectsService.downloadExport(slug);
     res.setHeader('Content-Type', contentType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', buffer.length);
     return res.end(buffer);
+  }
+
+  // ─── Image Generation Endpoints ──────────────────────────────────────────
+
+  @Post(':slug/images')
+  generateImages(@Param('slug') slug: string) {
+    return this.projectsService.generateImages(slug);
+  }
+
+  @Post(':slug/images/:sceneId/regenerate')
+  regenerateImage(
+    @Param('slug') slug: string,
+    @Param('sceneId') sceneId: string,
+  ) {
+    return this.projectsService.regenerateImage(slug, sceneId);
+  }
+
+  @Get(':slug/assets')
+  getAssets(@Param('slug') slug: string, @Query('type') type?: string) {
+    return this.projectsService.getAssets(slug, type);
+  }
+
+  // ─── Scene Rendering Endpoints ───────────────────────────────────────────
+
+  @Post(':slug/render')
+  renderProject(@Param('slug') slug: string) {
+    return this.projectsService.renderProject(slug);
+  }
+
+  @Post(':slug/render/:sceneId')
+  renderScene(@Param('slug') slug: string, @Param('sceneId') sceneId: string) {
+    return this.projectsService.renderScene(slug, sceneId);
+  }
+
+  // ─── Pipeline Status Endpoints ───────────────────────────────────────────
+
+  @Get(':slug/pipeline')
+  getPipelineStatus(@Param('slug') slug: string) {
+    return this.projectsService.getPipelineStatus(slug);
+  }
+
+  @Post(':slug/pipeline/:stage/retry')
+  retryStage(@Param('slug') slug: string, @Param('stage') stage: string) {
+    return this.projectsService.retryStage(slug, stage);
+  }
+
+  @Post(':slug/pipeline/:stage/resume')
+  resumePipeline(@Param('slug') slug: string, @Param('stage') stage: string) {
+    return this.projectsService.resumePipeline(slug, stage);
   }
 }

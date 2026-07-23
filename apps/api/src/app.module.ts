@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AiModule } from './modules/ai/ai.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { StorageModule } from './common/storage/storage.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { StorageModule } from './common/storage/storage.module';
     ),
     AiModule,
     ProjectsModule,
+    PipelineModule,
     StorageModule,
   ],
   controllers: [AppController],

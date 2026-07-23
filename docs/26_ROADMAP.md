@@ -1,229 +1,80 @@
 # Roadmap
 
-Version: 1.0
-
----
-
-# Vision
-
-Build the world's best AI-powered creative studio for short-form comedy content.
-
----
-
-# Phase 1
-
-Foundation
-
-Status
-
-Completed
-
-Features
-
-Monorepo
-
-Backend
-
-Frontend
-
-Provider Engine
-
-Domain Models
-
-Documentation
-
----
-
-# Phase 2
-
-Project Management
-
-Status
-
-In Progress
-
-Features
-
-Projects
-
-Series
-
-Characters
-
-Storage
-
-Dashboard
-
-Completed within the current vertical slice
-
-Projects
-
-Local JSON storage
-
-Studio workflow through Director Plan, Story, Scenes, Dialogues, and Prompt Builder
-
----
-
-# Phase 3
-
-Director AI
-
-Features
-
-Director Agent
-
-Gemini Integration
-
-Director Plan
-
-JSON Validation
-
----
-
-# Phase 4
-
-Story Engine
-
-Story Agent
-
-Episode Structure
-
-Comedy Engine
-
----
-
-# Phase 5
-
-Scene Engine
-
-Scene Planning
-
-Visual Continuity
-
-Camera Planning
-
----
-
-# Phase 6
-
-Dialogue Engine
-
-Character Voices
-
-Emotion
-
-Timing
-
-Status
-
-Completed for the initial vertical slice
-
----
-
-# Prompt Builder
-
-Status
-
-Completed for the initial vertical slice
-
-Features
-
-Per-scene render prompts
-
-Camera, lighting, mood, and negative-prompt direction
-
-Schema validation before storage
-
----
-
-# Phase 7
-
-Video Engine
-
-Video Providers
-
-Rendering
-
-Preview
-
-Status
-
-In Progress
-
-Completed
-
-Provider-independent scene render-plan preparation and Studio review
-
-Local FFmpeg fallback rendering to a vertical MP4
-
-Remaining
-
-Video provider integration, background rendering, preview, and asset validation
-
----
-
-# Phase 8
-
-Audio Engine
-
-Voices
-
-Music
-
-Effects
-
-Mixing
-
----
-
-# Phase 9
-
-Export Engine
-
-Video Merge
-
-Subtitles
-
-Metadata
-
-Thumbnail
-
----
-
-# Phase 10
-
-Studio
-
-Timeline
-
-Editor
-
-Asset Browser
-
-Review
-
----
-
-# Future
-
-Plugins
-
-Cloud Sync
-
-Collaboration
-
-Marketplace
-
-AI Evaluation
-
-Analytics
-
-Publishing
-
-API
-
-Mobile
-
-Desktop
-
-GPU Rendering
+## Phase 1: AI Images → FFmpeg Video (Current)
+
+**Status**: In Progress
+
+### Goals
+
+1. ✅ AI image generation (Mock/Gemini/OpenAI/Pollinations)
+2. ✅ FFmpeg scene rendering (camera movements: zoom, pan, fade)
+3. ✅ MongoDB storage for all metadata and assets
+4. ✅ Pipeline state management (status, timestamps, logs, retry, resume)
+5. ✅ Studio UI with image display, provider, status, regenerate, download
+6. ✅ Scene rendering with video preview
+7. ✅ Pipeline status and logs
+8. ✅ Export to final MP4
+
+### Completed
+
+- [x] ImageProvider interface in ai-core contracts
+- [x] MockImageProvider, GeminiImageProvider, OpenAIImageProvider, PollinationsImageProvider
+- [x] FutureImageProvider (marked as future implementation)
+- [x] Asset, PipelineState, GenerationJob, Export MongoDB schemas
+- [x] ImageGenerationService, PromptEnhancerService, SceneRendererService
+- [x] AssetService, PipelineStateService, GenerationQueueService, ProjectAssemblerService
+- [x] API endpoints for image generation, scene rendering, pipeline status
+- [x] Studio UI with AI Images and Render steps
+- [x] FFmpeg scene renderer with camera movements
+- [x] Documentation updates
+
+## Phase 2: AI Video Providers (Future)
+
+**Status**: Planned
+
+### Goals
+
+1. Introduce `VideoProvider` interface
+2. Replace `ImageProvider` + `SceneRendererService` with `VideoProvider`
+3. Generate full video clips directly from prompts
+4. Maintain backward compatibility with Phase 1
+
+### Tasks
+
+- [ ] Add `VideoProvider` interface to ai-core contracts
+- [ ] Implement concrete video providers (e.g., Runway, Pika, Kaiber)
+- [ ] Update `ProviderRegistry` to support `VideoProvider`
+- [ ] Update `ImageGenerationService` to use `VideoProvider` when available
+- [ ] Merge `image-generation` and `scene-rendering` stages into `video-generation`
+- [ ] Update Studio UI to show video generation status
+- [ ] Update documentation
+
+### Phase 2 Transition
+
+```
+Phase 1:  ImageProvider → ImageEnhancer → SceneRenderer (FFmpeg)
+Phase 2:  VideoProvider (replaces all three above)
+```
+
+The `VideoProvider` generates full video clips directly. The downstream pipeline (subtitles, voice, music, composition) is unchanged.
+
+## Phase 3: Advanced Features (Future)
+
+### Goals
+
+1. Voice generation (TTS)
+2. Music generation (background score)
+3. Advanced subtitle generation
+4. Multi-language support
+5. Batch processing
+6. Export formats (MP4, MOV, AVI, GIF)
+7. Video editing tools
+8. Collaboration features
+
+## Timeline
+
+| Phase | Status | Timeline |
+|-------|--------|----------|
+| Phase 1 | In Progress | Q3 2026 |
+| Phase 2 | Planned | Q4 2026 |
+| Phase 3 | Planned | Q1 2027 |

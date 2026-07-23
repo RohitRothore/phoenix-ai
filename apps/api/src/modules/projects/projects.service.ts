@@ -12,7 +12,7 @@ import { LocalFfmpegExportService } from '../../common/rendering/local-ffmpeg-ex
 import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
 import { DialogueOutput } from '../ai/agents/dialogue/dialogue.types';
 import { PromptAgent } from '../ai/agents/prompt/prompt.agent';
-import { PromptOutput } from '../ai/agents/prompt/prompt.types';
+import { PromptOutput, RenderPrompt } from '../ai/agents/prompt/prompt.types';
 import { VideoOutput } from '../ai/agents/video/video.types';
 import { VideoPreparationPipeline } from '../ai/pipelines/video-preparation.pipeline';
 import {
@@ -28,8 +28,22 @@ import { StoryOutput } from '../ai/agents/story/story.types';
 import { VoiceAgent } from '../ai/agents/voice/voice.agent';
 import { VoiceOutput } from '../ai/agents/voice/voice.types';
 import { CreateProjectDto } from './dto/create-project.dto';
-import { ArtifactStatus } from '../../common/storage/schemas';
+import {
+  ArtifactStatus,
+  Asset,
+  AssetDocument,
+  PipelineStateDocument,
+  GenerationJobDocument,
+  ExportDocument,
+} from '../../common/storage/schemas';
 import { LocalStorageService } from '../../common/storage/local-storage.service';
+import { AssetService } from '../assets/asset.service';
+import { PipelineStateService } from '../pipeline/pipeline-state.service';
+import { GenerationQueueService } from '../pipeline/generation-queue.service';
+import { ImageGenerationService } from '../pipeline/image-generation.service';
+import { PromptEnhancerService } from '../pipeline/prompt-enhancer.service';
+import { SceneRendererService } from '../pipeline/scene-renderer.service';
+import { ProjectAssemblerService } from '../pipeline/project-assembler.service';
 
 export interface ProjectJson {
   id: string;
@@ -80,6 +94,13 @@ export class ProjectsService {
     private readonly subtitlePipeline: SubtitlePipeline,
     private readonly localExportService: LocalFfmpegExportService,
     private readonly voiceAgent: VoiceAgent,
+    private readonly imageGenerationService: ImageGenerationService,
+    private readonly promptEnhancerService: PromptEnhancerService,
+    private readonly sceneRendererService: SceneRendererService,
+    private readonly assetService: AssetService,
+    private readonly pipelineStateService: PipelineStateService,
+    private readonly generationQueueService: GenerationQueueService,
+    private readonly projectAssemblerService: ProjectAssemblerService,
   ) {}
 
   async create(
@@ -790,6 +811,355 @@ export class ProjectsService {
       buffer,
       filename,
       contentType: 'video/mp4',
+    };
+  }
+
+  // ─── Image Generation ─────────────────────────────────────────────────────
+
+  async generateImages(slug: string) {
+    const project = await this.loadProject(slug);
+    const scenes = (await this.mongo.getArtifact(
+      project.id,
+      'scenes',
+    )) as SceneArtifact | null;
+    const prompts = (await this.mongo.getArtifact(
+      project.id,
+      'prompts',
+    )) as PromptArtifact | null;
+
+    if (
+      !scenes ||
+      scenes.status !== 'ready' ||
+      !prompts ||
+      prompts.status !== 'ready'
+    ) {
+      throw new ConflictException(
+        'Scenes and render prompts must be generated before image generation.',
+      );
+    }
+
+    this.logger.log(`Generating images for project: "${slug}"`);
+
+    const enhancedPrompts = this.promptEnhancerService.enhancePrompts(
+      prompts.scenes,
+    );
+
+    const imageScenes = scenes.scenes.map((scene) => {
+      const prompt = enhancedPrompts.find((p) => p.id === scene.id);
+      return {
+        id: String(scene.id),
+        duration: scene.duration,
+        prompt: prompt ?? {
+          id: scene.id,
+          prompt: scene.visualPrompt,
+          negativePrompt: '',
+          camera: '',
+          lighting: '',
+          mood: '',
+        },
+      };
+    });
+
+    const results = await this.imageGenerationService.generateImages({
+      projectId: project.id!,
+      projectSlug: slug,
+      scenes: imageScenes,
+    });
+
+    await this.updateProjectTimestamp(slug);
+
+    return {
+      success: true,
+      message: `Images generated for ${results.length} scenes.`,
+      data: results,
+    };
+  }
+
+  async regenerateImage(slug: string, sceneId: string) {
+    const project = await this.loadProject(slug);
+    const prompts = (await this.mongo.getArtifact(
+      project.id,
+      'prompts',
+    )) as PromptArtifact | null;
+
+    if (!prompts || prompts.status !== 'ready') {
+      throw new ConflictException(
+        'Render prompts must be generated before regenerating an image.',
+      );
+    }
+
+    const prompt = prompts.scenes.find((p) => String(p.id) === sceneId);
+    if (!prompt) {
+      throw new NotFoundException(`Scene ${sceneId} not found.`);
+    }
+
+    this.logger.log(
+      `Regenerating image for scene ${sceneId} in project: "${slug}"`,
+    );
+
+    const result = await this.imageGenerationService.regenerateImage(
+      project.id!,
+      slug,
+      sceneId,
+      prompt,
+    );
+
+    await this.updateProjectTimestamp(slug);
+
+    return {
+      success: true,
+      message: `Image regenerated for scene ${sceneId}.`,
+      data: result,
+    };
+  }
+
+  async getAssets(slug: string, type?: string) {
+    const project = await this.loadProject(slug);
+    const assets = await this.assetService.listByProject(
+      project.id!,
+      type as 'IMAGE' | 'VIDEO' | 'AUDIO' | 'SUBTITLE' | 'EXPORT' | undefined,
+    );
+    return {
+      success: true,
+      message: 'Assets retrieved successfully.',
+      data: assets,
+    };
+  }
+
+  // ─── Scene Rendering ──────────────────────────────────────────────────────
+
+  async renderScene(slug: string, sceneId: string) {
+    const project = await this.loadProject(slug);
+    const scenes = (await this.mongo.getArtifact(
+      project.id,
+      'scenes',
+    )) as SceneArtifact | null;
+    const prompts = (await this.mongo.getArtifact(
+      project.id,
+      'prompts',
+    )) as PromptArtifact | null;
+    const assets = await this.assetService.listByProject(project.id!, 'IMAGE');
+
+    if (!scenes || scenes.status !== 'ready') {
+      throw new ConflictException('Scenes must be generated before rendering.');
+    }
+
+    const scene = scenes.scenes.find((s) => String(s.id) === sceneId);
+    if (!scene) {
+      throw new NotFoundException(`Scene ${sceneId} not found.`);
+    }
+
+    const prompt = prompts?.scenes.find((p) => p.id === scene.id);
+    if (!prompt) {
+      throw new ConflictException(
+        `Render prompt for scene ${sceneId} not found.`,
+      );
+    }
+
+    const imageAsset = assets.find((a) => a.sceneId === sceneId);
+    if (!imageAsset) {
+      throw new ConflictException(
+        `Image for scene ${sceneId} not found. Generate images first.`,
+      );
+    }
+
+    this.logger.log(`Rendering scene ${sceneId} in project: "${slug}"`);
+
+    const results = await this.sceneRendererService.renderScenes({
+      projectId: project.id!,
+      projectSlug: slug,
+      scenes: [
+        {
+          id: sceneId,
+          duration: scene.duration,
+          imagePath: imageAsset.path!,
+          prompt,
+        },
+      ],
+    });
+
+    await this.updateProjectTimestamp(slug);
+
+    return {
+      success: true,
+      message: `Scene ${sceneId} rendered successfully.`,
+      data: results[0],
+    };
+  }
+
+  async renderProject(slug: string) {
+    const project = await this.loadProject(slug);
+    const scenes = (await this.mongo.getArtifact(
+      project.id,
+      'scenes',
+    )) as SceneArtifact | null;
+    const prompts = (await this.mongo.getArtifact(
+      project.id,
+      'prompts',
+    )) as PromptArtifact | null;
+    const assets = await this.assetService.listByProject(project.id!, 'IMAGE');
+
+    if (!scenes || scenes.status !== 'ready') {
+      throw new ConflictException('Scenes must be generated before rendering.');
+    }
+
+    if (!prompts || prompts.status !== 'ready') {
+      throw new ConflictException(
+        'Render prompts must be generated before rendering.',
+      );
+    }
+
+    if (assets.length === 0) {
+      throw new ConflictException(
+        'Images must be generated before rendering. Call /images first.',
+      );
+    }
+
+    this.logger.log(`Rendering all scenes for project: "${slug}"`);
+
+    const renderScenes = scenes.scenes.map((scene) => {
+      const prompt = prompts.scenes.find((p) => p.id === scene.id);
+      const imageAsset = assets.find((a) => a.sceneId === String(scene.id));
+      return {
+        id: String(scene.id),
+        duration: scene.duration,
+        imagePath: imageAsset?.path ?? '',
+        prompt: prompt ?? {
+          id: scene.id,
+          prompt: scene.visualPrompt,
+          negativePrompt: '',
+          camera: '',
+          lighting: '',
+          mood: '',
+        },
+      };
+    });
+
+    const results = await this.sceneRendererService.renderScenes({
+      projectId: project.id!,
+      projectSlug: slug,
+      scenes: renderScenes,
+    });
+
+    // Assemble the final export
+    await this.projectAssemblerService.assembleExport({
+      projectId: project.id!,
+      projectSlug: slug,
+      scenes: results.map((r) => ({
+        id: r.sceneId,
+        duration: r.duration,
+        imagePath: r.videoPath,
+      })),
+    });
+
+    await this.updateProjectTimestamp(slug);
+
+    return {
+      success: true,
+      message: `All scenes rendered. ${results.length} scene videos created.`,
+      data: results,
+    };
+  }
+
+  // ─── Pipeline Status ──────────────────────────────────────────────────────
+
+  async getPipelineStatus(slug: string) {
+    const project = await this.loadProject(slug);
+    const states = await this.pipelineStateService.findByProject(project.id!);
+    const jobs = await this.generationQueueService.listByProject(project.id!);
+    const assets = await this.assetService.listByProject(project.id!);
+
+    return {
+      success: true,
+      message: 'Pipeline status retrieved successfully.',
+      data: {
+        projectId: project.id,
+        projectName: project.name,
+        stages: states.map((s) => ({
+          stage: s.stage,
+          status: s.status,
+          startedAt: s.startedAt,
+          completedAt: s.completedAt,
+          failedAt: s.failedAt,
+          retryCount: s.retryCount,
+          errorMessage: s.errorMessage,
+          logs: s.logs,
+        })),
+        jobs: jobs.map((j) => ({
+          sceneId: j.sceneId,
+          type: j.type,
+          provider: j.provider,
+          status: j.status,
+          startedAt: j.startedAt,
+          completedAt: j.completedAt,
+          failedAt: j.failedAt,
+          retryCount: j.retryCount,
+          errorMessage: j.errorMessage,
+          logs: j.logs,
+        })),
+        assets: assets.map((a) => ({
+          sceneId: a.sceneId,
+          type: a.type,
+          filename: a.filename,
+          path: a.path,
+          status: a.status,
+          provider: a.provider,
+          model: a.model,
+          width: a.width,
+          height: a.height,
+          duration: a.duration,
+          generationTime: a.generationTime,
+          seed: a.seed,
+        })),
+      },
+    };
+  }
+
+  async retryStage(slug: string, stage: string) {
+    const project = await this.loadProject(slug);
+    await this.pipelineStateService.retry(
+      project.id!,
+      stage as
+        | 'director'
+        | 'story'
+        | 'scenes'
+        | 'dialogues'
+        | 'prompts'
+        | 'image-generation'
+        | 'scene-rendering'
+        | 'subtitle-generation'
+        | 'voice-generation'
+        | 'export',
+    );
+
+    return {
+      success: true,
+      message: `Stage "${stage}" has been queued for retry.`,
+      data: { projectId: project.id, stage, status: 'pending' },
+    };
+  }
+
+  async resumePipeline(slug: string, stage: string) {
+    const project = await this.loadProject(slug);
+    await this.pipelineStateService.resume(
+      project.id!,
+      stage as
+        | 'director'
+        | 'story'
+        | 'scenes'
+        | 'dialogues'
+        | 'prompts'
+        | 'image-generation'
+        | 'scene-rendering'
+        | 'subtitle-generation'
+        | 'voice-generation'
+        | 'export',
+    );
+
+    return {
+      success: true,
+      message: `Pipeline stage "${stage}" has been resumed.`,
+      data: { projectId: project.id, stage, status: 'pending' },
     };
   }
 

@@ -5,6 +5,8 @@ export abstract class StorageService {
   abstract writeText(path: string, content: string): Promise<void>;
   abstract readJson<T>(path: string): Promise<T>;
   abstract readBinary(path: string): Promise<Buffer>;
+
+  abstract writeBinary(path: string, data: Buffer): Promise<void>;
   abstract exists(path: string): Promise<boolean>;
   abstract listDirectories(path: string): Promise<string[]>;
   abstract getAbsolutePath(path: string): string;

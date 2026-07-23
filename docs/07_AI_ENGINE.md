@@ -1,205 +1,175 @@
 # AI Engine
 
-Version 1.0
+## Overview
 
----
+The AI Engine orchestrates multiple AI agents that work in sequence to transform a text prompt into a complete video. Each agent has a specific role and produces structured output that feeds into the next agent.
 
-# Philosophy
+## Agent Architecture
 
-Phoenix AI Studio is not an AI wrapper.
+```
+packages/ai-core/src/
+├── contracts/
+│   ├── Agent.ts             # Agent interface
+│   ├── Pipeline.ts          # Pipeline interface
+│   ├── AIProvider.ts        # AI provider interface
+│   ├── MediaProvider.ts     # Media provider interface
+│   └── ImageProvider.ts     # Image provider interface (Phase 1)
+├── index.ts                 # Public exports
+```
 
-It is an AI operating system for creative generation.
+### Agent Interface
 
-The AI Engine is responsible for transforming an idea into production-ready
-creative assets.
+```typescript
+interface Agent<TInput, TOutput> {
+  execute(input: TInput): Promise<TOutput>;
+}
+```
 
-Unlike traditional AI applications that generate everything from a single prompt,
-Phoenix executes multiple specialized AI stages.
+### Pipeline Interface
 
----
+```typescript
+interface Pipeline<TInput, TOutput> {
+  run(input: TInput): Promise<TOutput>;
+}
+```
 
-# AI Principles
+## Agents
 
-Every AI component has exactly one responsibility.
+### 1. Director Agent
 
-Every AI response must be structured.
+- **Input**: Project topic, language, platform, style, humor
+- **Output**: Director plan (genre, tone, pacing, visual style, comedy mechanics, content guidelines)
+- **Purpose**: Establishes creative boundaries and storytelling guidelines
 
-Every AI response must be validated.
+### 2. Story Agent
 
-Every AI response must be reproducible.
+- **Input**: Project details + Director plan
+- **Output**: Story (title, hook, premise, summary, acts, characters, ending)
+- **Purpose**: Creates the narrative structure and character definitions
 
-Every AI response belongs to a project.
+### 3. Scene Agent (Scene Planner)
 
-Every AI stage can be regenerated independently.
+- **Input**: Project details + Director plan + Story
+- **Output**: Scenes (scene breakdown with visual prompts, durations, comedy elements)
+- **Purpose**: Maps the story into filmable visual segments
 
----
+### 4. Dialogue Agent
 
-# AI Workflow
+- **Input**: Project details + Director plan + Story + Scenes
+- **Output**: Dialogues (character-specific dialogue with emotions and timing)
+- **Purpose**: Writes natural, character-specific dialogue
 
-Idea
+### 5. Prompt Agent (Prompt Generator)
 
-↓
+- **Input**: Project details + Director plan + Scenes + Dialogues
+- **Output**: Prompts (render-ready prompts with camera, lighting, mood, negative prompt)
+- **Purpose**: Creates prompts optimized for AI image generation
 
-Director Planning
+### 6. Voice Agent
 
-↓
+- **Input**: Project details + Dialogues
+- **Output**: Voice lines (TTS audio per dialogue line)
+- **Purpose**: Generates character-specific voice audio
 
-Story Generation
+## Pipelines
 
-↓
+### Video Preparation Pipeline
 
-Scene Planning
+- **Input**: Project details + Scenes + Prompts
+- **Output**: Video plan (scene jobs with render parameters)
+- **Purpose**: Prepares scene jobs for rendering
 
-↓
+### Subtitle Pipeline
 
-Dialogue Writing
+- **Input**: Scenes + Dialogues
+- **Output**: Subtitles (SRT cues)
+- **Purpose**: Creates timed captions from dialogues
 
-↓
+## Phase 1: Image Generation
 
-Prompt Generation
+The AI Engine uses the **ImageProvider** interface for image generation:
 
-↓
+```typescript
+interface ImageProvider {
+  generateImage(request: ImageGenerationRequest): Promise<ImageGenerationResponse>;
+  getProviderName(): string;
+  getModelName(): string;
+  isAvailable(): boolean;
+}
+```
 
-Video Generation
+### Image Provider Selection
 
-↓
-
-Voice Generation
-
-↓
-
-Subtitle Generation
-
-↓
-
-Export
-
-Each stage consumes structured data and produces structured data.
-
----
-
-# Why Multiple Stages?
-
-Large prompts produce inconsistent results.
-
-Breaking work into multiple AI stages improves:
-
-Consistency
-
-Debuggability
-
-Prompt Quality
-
-Regeneration
-
-Testing
-
-Caching
-
----
-
-# AI Components
-
-Director
-
-Story
-
-Scene Planner
-
-Dialogue
-
-Prompt Builder
-
-Video
-
-Voice
-
-Subtitle
-
-Each component is replaceable.
-
----
-
-# AI Output Rules
-
-Never return markdown.
-
-Never return prose.
-
-Always return JSON.
-
-Always validate.
-
-Always include metadata.
-
----
-
-# Retry Policy
-
-Invalid JSON
-
-↓
-
-Retry
-
-Invalid schema
-
-↓
-
-Retry
-
-Provider error
-
-↓
-
-Retry
-
-Rate limit
-
-↓
-
-Backoff
-
-Maximum retries configurable.
-
----
-
-# Logging
-
-Every AI request logs
-
-Provider
-
-Model
-
-Prompt
-
-Response
-
-Latency
-
-Token usage
-
-Cost (future)
-
-Project ID
-
-Request ID
-
----
-
-# Future
-
-Streaming
-
-Tool calling
-
-Function calling
-
-RAG
-
-Memory
-
-Evaluation
-
-Fine tuning
+The `ProviderRegistry` selects the image provider at runtime:
+
+1. **GeminiImageProvider** — if `GEMINI_API_KEY` is set
+2. **OpenAIImageProvider** — if `OPENAI_API_KEY` is set
+3. **MockImageProvider** — if no API key (always available)
+
+### Image Generation Flow
+
+```
+1. PromptEnhancerService enhances render prompts
+2. ImageGenerationService iterates over scenes
+3. For each scene:
+   a. ProviderRegistry.getImageProvider() returns the active provider
+   b. provider.generateImage(request) generates the image
+   c. Image is saved to disk
+   d. Asset document is created in MongoDB
+   e. GenerationJob is updated
+4. PipelineStateService marks image-generation stage as completed
+```
+
+## Phase 2: Video Generation (Future)
+
+In Phase 2, the `VideoProvider` interface will be introduced:
+
+```typescript
+interface VideoProvider {
+  generateVideo(request: VideoGenerationRequest): Promise<VideoGenerationResponse>;
+  getProviderName(): string;
+  getModelName(): string;
+  isAvailable(): boolean;
+}
+```
+
+The `ImageGenerationService` will check for a `VideoProvider` first. If available, it will generate video clips directly. If not, it will fall back to the Phase 1 flow (ImageProvider + SceneRendererService).
+
+## Provider Registry
+
+The `ProviderRegistry` is a NestJS token (`PROVIDER_REGISTRY`) that manages provider instances:
+
+```typescript
+// Registered in ProviderModule
+{
+  provide: PROVIDER_REGISTRY,
+  useFactory: () => {
+    const registry = new ProviderRegistry();
+    if (process.env.GEMINI_API_KEY) {
+      registry.registerImageProvider(new GeminiImageProvider(...));
+    } else if (process.env.OPENAI_API_KEY) {
+      registry.registerImageProvider(new OpenAIImageProvider(...));
+    } else {
+      registry.registerImageProvider(new MockImageProvider());
+    }
+    return registry;
+  },
+}
+```
+
+## Mock Mode
+
+When no API key is available, the `MockImageProvider` generates placeholder images using FFmpeg:
+
+```typescript
+// Creates a solid-color image with scene text
+await ffmpeg.run([
+  '-y', '-f', 'lavfi',
+  '-i', `color=c=7c3aed:s=1024x1024:d=1`,
+  '-vf', `drawtext=...:text='Scene ${id}':...`,
+  '-frames:v', '1',
+  absPath,
+]);
+```
+
+This ensures the full pipeline always completes without paid APIs.

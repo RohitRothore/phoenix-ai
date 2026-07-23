@@ -131,6 +131,78 @@ export interface Subtitles {
   generatedAt: string;
 }
 
+// ─── Image Generation Types ───────────────────────────────────────────────────
+
+export interface ImageGenerationResult {
+  sceneId: string;
+  assetId: string;
+  imageUrl: string;
+  imagePath: string;
+  provider: string;
+  model: string;
+  generationTime: number;
+  width: number;
+  height: number;
+  seed?: number;
+}
+
+export interface Asset {
+  sceneId: string;
+  type: "IMAGE" | "VIDEO" | "AUDIO" | "SUBTITLE" | "EXPORT";
+  filename: string;
+  path: string;
+  url?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+  provider?: string;
+  model?: string;
+  generationTime?: number;
+  seed?: number;
+  status: "pending" | "generating" | "ready" | "failed" | "cancelled";
+}
+
+export interface SceneRenderResult {
+  sceneId: string;
+  videoPath: string;
+  duration: number;
+  width: number;
+  height: number;
+  fps: number;
+}
+
+export interface PipelineStageInfo {
+  stage: string;
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled";
+  startedAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  retryCount?: number;
+  errorMessage?: string;
+  logs?: Array<{ timestamp: string; level: string; message: string }>;
+}
+
+export interface PipelineJobInfo {
+  sceneId: string;
+  type: string;
+  provider: string;
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled";
+  startedAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  retryCount?: number;
+  errorMessage?: string;
+  logs?: Array<{ timestamp: string; level: string; message: string }>;
+}
+
+export interface PipelineStatus {
+  projectId: string;
+  projectName: string;
+  stages: PipelineStageInfo[];
+  jobs: PipelineJobInfo[];
+  assets: Asset[];
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message: string;
@@ -258,4 +330,59 @@ export async function getSubtitles(slug: string) {
 
 export async function exportVideo(slug: string) {
   return request<{ path: string }>(`/projects/${slug}/export`, { method: "POST" });
+}
+
+// ─── Image Generation API ─────────────────────────────────────────────────────
+
+export async function generateImages(slug: string) {
+  return request<ImageGenerationResult[]>(`/projects/${slug}/images`, {
+    method: 'POST',
+  });
+}
+
+export async function regenerateImage(slug: string, sceneId: string) {
+  return request<ImageGenerationResult>(
+    `/projects/${slug}/images/${sceneId}/regenerate`,
+    { method: 'POST' },
+  );
+}
+
+export async function getAssets(slug: string, type?: string) {
+  const query = type ? `?type=${type}` : '';
+  return request<Asset[]>(`/projects/${slug}/assets${query}`);
+}
+
+// ─── Scene Rendering API ──────────────────────────────────────────────────────
+
+export async function renderScene(slug: string, sceneId: string) {
+  return request<SceneRenderResult>(
+    `/projects/${slug}/render/${sceneId}`,
+    { method: 'POST' },
+  );
+}
+
+export async function renderProject(slug: string) {
+  return request<SceneRenderResult[]>(`/projects/${slug}/render`, {
+    method: 'POST',
+  });
+}
+
+// ─── Pipeline Status API ─────────────────────────────────────────────────────
+
+export async function getPipelineStatus(slug: string) {
+  return request<PipelineStatus>(`/projects/${slug}/pipeline`);
+}
+
+export async function retryStage(slug: string, stage: string) {
+  return request<{ projectId: string; stage: string; status: string }>(
+    `/projects/${slug}/pipeline/${stage}/retry`,
+    { method: 'POST' },
+  );
+}
+
+export async function resumePipeline(slug: string, stage: string) {
+  return request<{ projectId: string; stage: string; status: string }>(
+    `/projects/${slug}/pipeline/${stage}/resume`,
+    { method: 'POST' },
+  );
 }
