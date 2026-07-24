@@ -101,6 +101,16 @@ export class ImageGenerationService {
           style: scene.prompt.mood,
         });
 
+        // Avoid duplicate asset on unique project+scene+type
+        const existing = await this.assetService.findByProjectAndScene(
+          projectId,
+          scene.id,
+          'IMAGE',
+        );
+        if (existing) {
+          await this.assetService.delete(existing._id?.toString() ?? '');
+        }
+
         // Save the image to disk
         const imagePath = `projects/${projectSlug}/${response.imagePath}`;
         if (response.imageUrl.startsWith('http')) {
@@ -117,6 +127,20 @@ export class ImageGenerationService {
           } catch (e) {
             this.logger.warn(
               `Failed to download image: ${(e as Error).message}`,
+            );
+          }
+        } else if (response.imageUrl.startsWith('data:image')) {
+          // Persist base64 encoded image data from provider
+          try {
+            const base64Data = response.imageUrl.split(',')[1];
+            const buffer = Buffer.from(base64Data, 'base64');
+            await this.storage.createDirectory(
+              `projects/${projectSlug}/images`,
+            );
+            await this.storage.writeBinary(imagePath, buffer);
+          } catch (e) {
+            this.logger.warn(
+              `Failed to persist generated image: ${(e as Error).message}`,
             );
           }
         } else {

@@ -7,5 +7,6 @@ export * from './pollinations/PollinationsImageProvider';
 export * from './future/FutureImageProvider';
 export * from './media/RealMediaProvider';
 export * from './media/HuggingFaceMediaProvider';
+export * from './media/HuggingFaceImageProvider';
 export * from './mock/MockMediaProvider';
 export * from './mock/MockImageProvider';
