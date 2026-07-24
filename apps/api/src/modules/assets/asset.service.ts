@@ -47,7 +47,7 @@ export class AssetService {
     data: Partial<Asset>,
   ): Promise<AssetDocument | null> {
     return this.assetModel
-      .findByIdAndUpdate(id, { ...data, updatedAt: new Date() }, { new: true })
+      .findByIdAndUpdate(id, { ...data, updatedAt: new Date() }, { returnDocument: 'after' })
       .exec();
   }
 

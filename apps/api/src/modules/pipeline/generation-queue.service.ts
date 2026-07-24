@@ -49,7 +49,7 @@ export class GenerationQueueService {
     } else if (status === 'failed') {
       update.failedAt = new Date();
     }
-    return this.jobModel.findByIdAndUpdate(jobId, update, { new: true }).exec();
+    return this.jobModel.findByIdAndUpdate(jobId, update, { returnDocument: 'after' }).exec();
   }
 
   async setResponse(
@@ -60,7 +60,7 @@ export class GenerationQueueService {
       .findByIdAndUpdate(
         jobId,
         { response, updatedAt: new Date() },
-        { new: true },
+        { returnDocument: 'after' },
       )
       .exec();
   }
@@ -73,7 +73,7 @@ export class GenerationQueueService {
       .findByIdAndUpdate(
         jobId,
         { $push: { logs: entry }, $set: { updatedAt: new Date() } },
-        { new: true },
+        { returnDocument: 'after' },
       )
       .exec();
   }
@@ -97,7 +97,7 @@ export class GenerationQueueService {
           failedAt: undefined,
           updatedAt: new Date(),
         },
-        { new: true },
+        { returnDocument: 'after' },
       )
       .exec();
   }

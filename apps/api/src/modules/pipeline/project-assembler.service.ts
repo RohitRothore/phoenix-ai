@@ -46,7 +46,7 @@ export class ProjectAssemblerService {
     data: Partial<Export>,
   ): Promise<ExportDocument | null> {
     return this.exportModel
-      .findByIdAndUpdate(id, { ...data, updatedAt: new Date() }, { new: true })
+      .findByIdAndUpdate(id, { ...data, updatedAt: new Date() }, { returnDocument: 'after' })
       .exec();
   }
 

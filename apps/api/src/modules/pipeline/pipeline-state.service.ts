@@ -49,7 +49,7 @@ export class PipelineStateService {
       .findOneAndUpdate(
         { projectId, stage },
         { ...data, updatedAt: new Date() },
-        { new: true, upsert: true },
+        { returnDocument: 'after', upsert: true },
       )
       .exec();
   }
@@ -84,7 +84,7 @@ export class PipelineStateService {
           $push: { logs: entry },
           $set: { updatedAt: new Date() },
         },
-        { new: true, upsert: true },
+        { returnDocument: 'after', upsert: true },
       )
       .exec();
   }
