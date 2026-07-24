@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import { AssetService } from '../assets/asset.service';
 import { PipelineStateService } from './pipeline-state.service';
@@ -229,7 +225,7 @@ export class SceneRendererService {
     width: number,
     height: number,
   ): string {
-    const scale = `scale=${width}:${height}:force_original`;
+    const scale = `scale=${width}:${height}`;
     const pad = `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`;
 
     switch (movement) {
