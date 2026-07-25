@@ -1,10 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { Inject } from '@nestjs/common';
 import { PROVIDER_REGISTRY } from '../provider/provider.module';
 import { ProviderRegistry } from '@phoenix/providers';
 import { AssetService } from '../assets/asset.service';
 import { PipelineStateService } from './pipeline-state.service';
 import { GridFsService } from '../../common/storage/gridfs.service';
+
+const execFileAsync = promisify(execFile);
 
 export interface VoiceLineResult {
   sceneId: string;
@@ -171,44 +178,48 @@ export class VoiceGenerationService {
     text: string,
     language: string,
   ): Promise<{ buffer: Buffer; duration: number } | null> {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tts-'));
+    const outFile = path.join(tmpDir, 'output.mp3');
+
     try {
-      const langCode = language.toLowerCase().includes('hindi') ? 'hin' : 'eng';
-      const model = `facebook/mms-tts-${langCode}`;
-      const response = await fetch(
-        `https://router.huggingface.co/huggingface/fal-ai/${model}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputs: text }),
-        },
+      const voice = this.getVoiceForLanguage(language);
+      const rate = '+0%';
+      const pitch = '+0Hz';
+
+      await execFileAsync(
+        'edge-tts',
+        [
+          '--voice',
+          voice,
+          '--rate',
+          rate,
+          '--pitch',
+          pitch,
+          '--text',
+          text,
+          '--write-media',
+          outFile,
+        ],
+        { timeout: 30000 },
       );
 
-      if (!response.ok) {
-        const fallbackModel = `facebook/mms-tts-eng`;
-        const fallbackResponse = await fetch(
-          `https://router.huggingface.co/huggingface/fal-ai/${fallbackModel}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inputs: text }),
-          },
-        );
-
-        if (!fallbackResponse.ok) {
-          this.logger.warn(`TTS request failed: ${fallbackResponse.status}`);
-          return null;
-        }
-
-        const buffer = Buffer.from(await fallbackResponse.arrayBuffer());
-        return { buffer, duration: this.estimateDuration(text) };
-      }
-
-      const buffer = Buffer.from(await response.arrayBuffer());
-      return { buffer, duration: this.estimateDuration(text) };
+      const buffer = await fs.readFile(outFile);
+      const duration = this.estimateDuration(text);
+      return { buffer, duration };
     } catch (e) {
       this.logger.warn(`TTS call failed: ${(e as Error).message}`);
       return null;
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  private getVoiceForLanguage(language: string): string {
+    const lang = language.toLowerCase();
+    if (lang.includes('hindi') || lang.includes('hi')) {
+      return 'hi-IN-SwaraNeural';
+    }
+    return 'en-US-JennyNeural';
   }
 
   private generateSilentAudio(durationSeconds: number): Buffer {
