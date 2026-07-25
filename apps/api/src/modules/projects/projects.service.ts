@@ -781,6 +781,20 @@ export class ProjectsService {
       );
     }
 
+    const videoFilePath = `projects/${slug}/${video.finalPath}`;
+    if (!(await this.storage.exists(videoFilePath))) {
+      throw new ConflictException(
+        `Rendered video file not found at "${video.finalPath}". Please re-render the video before exporting.`,
+      );
+    }
+
+    const subtitleFilePath = `projects/${slug}/${subtitles.srtPath}`;
+    if (!(await this.storage.exists(subtitleFilePath))) {
+      throw new ConflictException(
+        `Subtitle file not found at "${subtitles.srtPath}". Please regenerate subtitles before exporting.`,
+      );
+    }
+
     const exportPath = await this.localExportService.export(
       slug,
       video.finalPath,
@@ -806,8 +820,14 @@ export class ProjectsService {
       );
     }
 
-    const path = `projects/${slug}/${video.finalPath}`;
-    const buffer = await this.storage.readBinary(path);
+    const filePath = `projects/${slug}/${video.finalPath}`;
+    if (!(await this.storage.exists(filePath))) {
+      throw new ConflictException(
+        `Rendered video file not found at "${video.finalPath}". Please re-render the video.`,
+      );
+    }
+
+    const buffer = await this.storage.readBinary(filePath);
     const filename = `${slug}-final.mp4`;
 
     return {

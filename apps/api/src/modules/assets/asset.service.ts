@@ -42,6 +42,21 @@ export class AssetService {
     return asset.save();
   }
 
+  async upsert(
+    projectId: string,
+    sceneId: string,
+    type: AssetType,
+    data: Omit<CreateAssetInput, 'projectId' | 'sceneId' | 'type'>,
+  ): Promise<AssetDocument> {
+    return this.assetModel
+      .findOneAndUpdate(
+        { projectId, sceneId, type },
+        { ...data, status: 'pending', updatedAt: new Date() },
+        { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
+      )
+      .exec();
+  }
+
   async update(
     id: string,
     data: Partial<Asset>,

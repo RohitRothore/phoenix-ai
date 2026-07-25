@@ -116,25 +116,27 @@ export class SceneRendererService {
 
         concatEntries.push(`file '${absClipPath}'`);
 
-        // Create video asset
-        const asset = await this.assetService.create({
+        // Upsert video asset (handles re-renders without duplicate key errors)
+        const asset = await this.assetService.upsert(
           projectId,
-          sceneId: scene.id,
-          type: 'VIDEO',
-          filename: `scene-${scene.id}.mp4`,
-          path: clipPath,
-          width,
-          height,
-          duration: scene.duration,
-          provider: 'ffmpeg',
-          model: 'local-renderer-v1',
-          metadata: {
-            cameraMovement: movement,
-            resolution: `${width}x${height}`,
-            frameRate: fps,
-            prompt: scene.prompt.prompt,
+          scene.id,
+          'VIDEO',
+          {
+            filename: `scene-${scene.id}.mp4`,
+            path: clipPath,
+            width,
+            height,
+            duration: scene.duration,
+            provider: 'ffmpeg',
+            model: 'local-renderer-v1',
+            metadata: {
+              cameraMovement: movement,
+              resolution: `${width}x${height}`,
+              frameRate: fps,
+              prompt: scene.prompt.prompt,
+            },
           },
-        });
+        );
 
         await this.assetService.update(asset._id?.toString() ?? '', {
           status: 'ready',
