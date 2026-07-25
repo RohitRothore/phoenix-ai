@@ -297,7 +297,7 @@ export class CompositionService {
           '-i',
           concatAudio,
           '-vf',
-          `subtitles=${srtFile}:force_style='FontName=DejaVu Sans,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=90'`,
+          `drawbox=x=0:y=ih*0.75:w=iw:h=ih*0.25:color=black@0.6:t=fill,subtitles=${srtFile}:force_style='FontName=DejaVu Sans,FontSize=11,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=4,BackColour=&H80000000,Outline=0,Alignment=2,MarginV=60,MarginL=60,MarginR=60'`,
           '-c:v',
           'libx264',
           '-c:a',

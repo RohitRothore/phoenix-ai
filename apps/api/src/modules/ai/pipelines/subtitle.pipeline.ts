@@ -32,6 +32,8 @@ export class SubtitlePipeline implements Pipeline<
     );
     let elapsedSeconds = 0;
     const cues: SubtitleCue[] = [];
+    const GAP = 0.1;
+    const MIN_CUE_DURATION = 0.5;
 
     for (const scene of input.scenes) {
       const lines = dialogueByScene.get(scene.id);
@@ -40,18 +42,39 @@ export class SubtitlePipeline implements Pipeline<
           `Dialogue is missing for scene ${scene.id}.`,
         );
       }
-      const cueDuration =
-        lines.length === 0 ? scene.duration : scene.duration / lines.length;
+      if (lines.length === 0) {
+        elapsedSeconds += scene.duration;
+        continue;
+      }
 
-      lines.forEach((line, index) => {
-        const start = elapsedSeconds + cueDuration * index;
+      const totalWords = lines.reduce(
+        (sum, line) => sum + line.text.split(/\s+/).length,
+        0,
+      );
+      const gapBudget = GAP * Math.max(0, lines.length - 1);
+      const availableDuration = Math.max(
+        scene.duration - gapBudget,
+        MIN_CUE_DURATION * lines.length,
+      );
+
+      let cursor = elapsedSeconds;
+      for (const line of lines) {
+        const wordCount = Math.max(1, line.text.split(/\s+/).length);
+        const proportion =
+          totalWords > 0 ? wordCount / totalWords : 1 / lines.length;
+        const cueDuration = Math.max(
+          MIN_CUE_DURATION,
+          availableDuration * proportion,
+        );
+
         cues.push({
           index: cues.length + 1,
-          startTime: formatSrtTimestamp(start),
-          endTime: formatSrtTimestamp(start + cueDuration),
+          startTime: formatSrtTimestamp(cursor),
+          endTime: formatSrtTimestamp(cursor + cueDuration),
           text: `${line.character}: ${line.text}`,
         });
-      });
+        cursor += cueDuration + GAP;
+      }
       elapsedSeconds += scene.duration;
     }
 

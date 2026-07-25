@@ -49,6 +49,26 @@ export interface VoiceGenerationInput {
 export class VoiceGenerationService {
   private readonly logger = new Logger(VoiceGenerationService.name);
 
+  private readonly englishVoices = [
+    'en-US-JennyNeural',
+    'en-US-GuyNeural',
+    'en-US-AriaNeural',
+    'en-US-DavisNeural',
+    'en-US-SaraNeural',
+    'en-US-TonyNeural',
+    'en-US-NancyNeural',
+    'en-US-AndrewNeural',
+  ];
+
+  private readonly hindiVoices = [
+    'hi-IN-SwaraNeural',
+    'hi-IN-MadhurNeural',
+    'hi-IN-SureshNeural',
+  ];
+
+  private characterVoiceMap = new Map<string, string>();
+  private voiceIndex = 0;
+
   constructor(
     @Inject(PROVIDER_REGISTRY)
     private readonly registry: ProviderRegistry,
@@ -63,6 +83,15 @@ export class VoiceGenerationService {
     const { projectId, projectSlug, language, scenes } = input;
     const results: VoiceLineResult[] = [];
     let totalDuration = 0;
+
+    this.characterVoiceMap.clear();
+    this.voiceIndex = 0;
+
+    const voices =
+      language.toLowerCase().includes('hindi') ||
+      language.toLowerCase().includes('hi')
+        ? this.hindiVoices
+        : this.englishVoices;
 
     await this.pipelineState.setStatus(
       projectId,
@@ -92,7 +121,8 @@ export class VoiceGenerationService {
           let audioBuffer: Buffer;
           let duration = this.estimateDuration(line.text);
 
-          const ttsResult = await this.callTTS(line.text, language);
+          const voice = this.getVoiceForCharacter(line.character, voices);
+          const ttsResult = await this.callTTS(line.text, voice, line.emotion);
           if (ttsResult) {
             audioBuffer = ttsResult.buffer;
             duration = ttsResult.duration;
@@ -176,35 +206,24 @@ export class VoiceGenerationService {
 
   private async callTTS(
     text: string,
-    language: string,
+    voice: string,
+    emotion: string,
   ): Promise<{ buffer: Buffer; duration: number } | null> {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tts-'));
     const outFile = path.join(tmpDir, 'output.mp3');
 
     try {
-      const voice = this.getVoiceForLanguage(language);
-      const rate = '+0%';
-      const pitch = '+0Hz';
-
       await execFileAsync(
         'edge-tts',
-        [
-          '--voice',
-          voice,
-          '--rate',
-          rate,
-          '--pitch',
-          pitch,
-          '--text',
-          text,
-          '--write-media',
-          outFile,
-        ],
+        ['--voice', voice, '--text', text, '--write-media', outFile],
         { timeout: 30000 },
       );
 
       const buffer = await fs.readFile(outFile);
-      const duration = this.estimateDuration(text);
+      let duration = await this.getAudioDuration(outFile);
+      if (duration <= 0) {
+        duration = this.estimateDuration(text);
+      }
       return { buffer, duration };
     } catch (e) {
       this.logger.warn(`TTS call failed: ${(e as Error).message}`);
@@ -214,12 +233,42 @@ export class VoiceGenerationService {
     }
   }
 
-  private getVoiceForLanguage(language: string): string {
-    const lang = language.toLowerCase();
-    if (lang.includes('hindi') || lang.includes('hi')) {
-      return 'hi-IN-SwaraNeural';
+  private getVoiceForCharacter(character: string, voices: string[]): string {
+    if (!this.characterVoiceMap.has(character)) {
+      this.characterVoiceMap.set(
+        character,
+        voices[this.voiceIndex % voices.length],
+      );
+      this.voiceIndex++;
     }
-    return 'en-US-JennyNeural';
+    return this.characterVoiceMap.get(character)!;
+  }
+
+  private async getAudioDuration(filePath: string): Promise<number> {
+    try {
+      const { stdout } = await execFileAsync(
+        'ffprobe',
+        [
+          '-v',
+          'error',
+          '-show_entries',
+          'format=duration',
+          '-of',
+          'default=noprint_wrappers=1:nokey=1',
+          filePath,
+        ],
+        { timeout: 10000 },
+      );
+      const duration = parseFloat(stdout.trim());
+      if (!isNaN(duration) && duration > 0) {
+        return duration;
+      }
+    } catch {
+      this.logger.warn(
+        'ffprobe duration measurement failed, falling back to estimate',
+      );
+    }
+    return 0;
   }
 
   private generateSilentAudio(durationSeconds: number): Buffer {
