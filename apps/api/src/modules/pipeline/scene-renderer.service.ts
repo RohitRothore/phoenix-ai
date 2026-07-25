@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 import { AssetService } from '../assets/asset.service';
 import { PipelineStateService } from './pipeline-state.service';
 import { LocalStorageService } from '../../common/storage/local-storage.service';
+import { GridFsService } from '../../common/storage/gridfs.service';
 import { FfmpegProcessService } from '../../common/rendering/ffmpeg-process.service';
 import { RenderPrompt } from '../ai/agents/prompt/prompt.types';
 
@@ -48,11 +51,13 @@ export class SceneRendererService {
   private static readonly DEFAULT_WIDTH = 1080;
   private static readonly DEFAULT_HEIGHT = 1920;
   private static readonly DEFAULT_FPS = 30;
+  private static readonly TEMP_DIR = '/tmp/phoenix-render';
 
   constructor(
     private readonly assetService: AssetService,
     private readonly pipelineState: PipelineStateService,
     private readonly storage: LocalStorageService,
+    private readonly gridfs: GridFsService,
     private readonly ffmpeg: FfmpegProcessService,
   ) {}
 
@@ -62,6 +67,9 @@ export class SceneRendererService {
     const height = SceneRendererService.DEFAULT_HEIGHT;
     const fps = input.frameRate ?? SceneRendererService.DEFAULT_FPS;
     const results: SceneRenderResult[] = [];
+
+    const tempDir = path.join(SceneRendererService.TEMP_DIR, projectSlug);
+    await fs.mkdir(tempDir, { recursive: true });
 
     await this.pipelineState.setStatus(projectId, 'scene-rendering', 'running');
     await this.pipelineState.addLog(projectId, 'scene-rendering', {
@@ -80,11 +88,18 @@ export class SceneRendererService {
           message: `Rendering scene ${scene.id}`,
         });
 
-        const clipPath = `projects/${projectSlug}/renders/scene-${scene.id}.mp4`;
-        const absClipPath = this.storage.getAbsolutePath(clipPath);
-        const absImagePath = this.storage.getAbsolutePath(scene.imagePath);
+        const tempClipPath = path.join(tempDir, `scene-${scene.id}.mp4`);
 
-        await this.storage.ensureDirectory(`projects/${projectSlug}/renders`);
+        let absImagePath: string;
+        const imageGridfsId = scene.imagePath?.replace('gridfs:', '') ?? '';
+        if (imageGridfsId) {
+          const imageData = await this.gridfs.downloadFile(imageGridfsId);
+          const tempImagePath = path.join(tempDir, `image-${scene.id}.png`);
+          await fs.writeFile(tempImagePath, imageData);
+          absImagePath = tempImagePath;
+        } else {
+          absImagePath = this.storage.getAbsolutePath(scene.imagePath);
+        }
 
         const movement = this.determineCameraMovement(scene.prompt);
         const filter = this.buildVideoFilter(movement, width, height);
@@ -109,34 +124,57 @@ export class SceneRendererService {
             '-t',
             String(scene.duration),
             '-shortest',
-            absClipPath,
+            tempClipPath,
           ],
           `render scene ${scene.id}`,
         );
 
-        concatEntries.push(`file '${absClipPath}'`);
+        const clipData = await fs.readFile(tempClipPath);
+        const gridfsFilename = `${projectSlug}/renders/scene-${scene.id}.mp4`;
+        const gridfsId = await this.gridfs.uploadFile(
+          gridfsFilename,
+          clipData,
+          {
+            projectId,
+            sceneId: scene.id,
+            cameraMovement: movement,
+            resolution: `${width}x${height}`,
+            frameRate: fps,
+          },
+        );
 
-        // Upsert video asset (handles re-renders without duplicate key errors)
-        const asset = await this.assetService.upsert(
+        const clipPath = `gridfs:${gridfsId}`;
+
+        concatEntries.push(`file '${tempClipPath}'`);
+
+        const existing = await this.assetService.findByProjectAndScene(
           projectId,
           scene.id,
           'VIDEO',
-          {
-            filename: `scene-${scene.id}.mp4`,
-            path: clipPath,
-            width,
-            height,
-            duration: scene.duration,
-            provider: 'ffmpeg',
-            model: 'local-renderer-v1',
-            metadata: {
-              cameraMovement: movement,
-              resolution: `${width}x${height}`,
-              frameRate: fps,
-              prompt: scene.prompt.prompt,
-            },
-          },
         );
+        if (existing) {
+          await this.assetService.delete(existing._id?.toString() ?? '');
+        }
+
+        const asset = await this.assetService.create({
+          projectId,
+          sceneId: scene.id,
+          type: 'VIDEO',
+          filename: `scene-${scene.id}.mp4`,
+          path: clipPath,
+          width,
+          height,
+          duration: scene.duration,
+          provider: 'ffmpeg',
+          model: 'local-renderer-v1',
+          metadata: {
+            cameraMovement: movement,
+            resolution: `${width}x${height}`,
+            frameRate: fps,
+            prompt: scene.prompt.prompt,
+            gridfsId,
+          },
+        });
 
         await this.assetService.update(asset._id?.toString() ?? '', {
           status: 'ready',
@@ -175,27 +213,6 @@ export class SceneRendererService {
       }
     }
 
-    // Stitch all scenes together
-    const concatPath = `projects/${projectSlug}/renders/concat.txt`;
-    const finalPath = `projects/${projectSlug}/renders/final.mp4`;
-    await this.storage.writeText(concatPath, concatEntries.join('\n'));
-
-    await this.ffmpeg.run(
-      [
-        '-y',
-        '-f',
-        'concat',
-        '-safe',
-        '0',
-        '-i',
-        this.storage.getAbsolutePath(concatPath),
-        '-c',
-        'copy',
-        this.storage.getAbsolutePath(finalPath),
-      ],
-      'stitch scene clips',
-    );
-
     await this.pipelineState.setStatus(
       projectId,
       'scene-rendering',
@@ -206,6 +223,8 @@ export class SceneRendererService {
       level: 'info',
       message: `Scene rendering completed for ${results.length} scenes`,
     });
+
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
 
     return results;
   }
@@ -236,13 +255,13 @@ export class SceneRendererService {
       case 'zoom-out':
         return `${scale},${pad},zoompan=z='max(zoom-0.001,1.0)':d=1:s=${width}x${height}:fps=30`;
       case 'pan-left':
-        return `${scale},${pad},pad=${width * 2}:${height}:${width}:0,trim=duration=5`;
+        return `${scale},${pad},zoompan=z='1.2':x='iw/2-(iw/zoom/2)+((iw/zoom)*0.1)*on':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
       case 'pan-right':
-        return `${scale},${pad},pad=${width * 2}:${height}:0:0,trim=duration=5`;
+        return `${scale},${pad},zoompan=z='1.2':x='iw/2-(iw/zoom/2)-((iw/zoom)*0.1)*on':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
       case 'pan-up':
-        return `${scale},${pad},pad=${width}:${height * 2}:0:${height},trim=duration=5`;
+        return `${scale},${pad},zoompan=z='1.2':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+((ih/zoom)*0.05)*on':d=1:s=${width}x${height}:fps=30`;
       case 'pan-down':
-        return `${scale},${pad},pad=${width}:${height * 2}:0:0,trim=duration=5`;
+        return `${scale},${pad},zoompan=z='1.2':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-((ih/zoom)*0.05)*on':d=1:s=${width}x${height}:fps=30`;
       case 'fade':
         return `${scale},${pad},fade=t=in:st=0:d=1,fade=t=out:st=4:d=1`;
       case 'cross-fade':

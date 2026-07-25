@@ -11,6 +11,7 @@ import {
 } from './schemas';
 import { MongoDBProjectService } from './mongodb-project.service';
 import { LocalStorageService } from './local-storage.service';
+import { GridFsService } from './gridfs.service';
 import { AssetService } from '../../modules/assets/asset.service';
 import { PipelineStateService } from '../../modules/pipeline/pipeline-state.service';
 import { FfmpegProcessService } from '../../common/rendering/ffmpeg-process.service';
@@ -31,6 +32,7 @@ import { ProjectAssemblerService } from 'src/modules/pipeline/project-assembler.
   providers: [
     MongoDBProjectService,
     LocalStorageService,
+    GridFsService,
     AssetService,
     PipelineStateService,
     GenerationQueueService,
@@ -40,6 +42,7 @@ import { ProjectAssemblerService } from 'src/modules/pipeline/project-assembler.
   exports: [
     MongoDBProjectService,
     LocalStorageService,
+    GridFsService,
     AssetService,
     PipelineStateService,
     GenerationQueueService,

@@ -31,6 +31,7 @@ export interface DialogueLine {
 
 export interface SceneDialogue {
   id: number;
+  duration: number;
   dialogue: DialogueLine[];
 }
 

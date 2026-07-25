@@ -7,17 +7,14 @@ import {
 import { randomUUID } from 'crypto';
 
 import { MongoDBProjectService } from '../../common/storage/mongodb-project.service';
-import { LocalFfmpegVideoRendererService } from '../../common/rendering/local-ffmpeg-video-renderer.service';
-import { LocalFfmpegExportService } from '../../common/rendering/local-ffmpeg-export.service';
 import { DialogueAgent } from '../ai/agents/dialogue/dialogue.agent';
 import { DialogueOutput } from '../ai/agents/dialogue/dialogue.types';
 import { PromptAgent } from '../ai/agents/prompt/prompt.agent';
 import { PromptOutput, RenderPrompt } from '../ai/agents/prompt/prompt.types';
-import { VideoOutput } from '../ai/agents/video/video.types';
-import { VideoPreparationPipeline } from '../ai/pipelines/video-preparation.pipeline';
 import {
   SubtitleOutput,
   SubtitlePipeline,
+  toSrt,
 } from '../ai/pipelines/subtitle.pipeline';
 import { DirectorAgent } from '../ai/agents/director/director.agent';
 import { DirectorOutput } from '../ai/agents/director/director.types';
@@ -25,8 +22,6 @@ import { SceneAgent } from '../ai/agents/scene/scene.agent';
 import { SceneOutput } from '../ai/agents/scene/scene.types';
 import { StoryAgent } from '../ai/agents/story/story.agent';
 import { StoryOutput } from '../ai/agents/story/story.types';
-import { VoiceAgent } from '../ai/agents/voice/voice.agent';
-import { VoiceOutput } from '../ai/agents/voice/voice.types';
 import { CreateProjectDto } from './dto/create-project.dto';
 import {
   ArtifactStatus,
@@ -37,6 +32,7 @@ import {
   ExportDocument,
 } from '../../common/storage/schemas';
 import { LocalStorageService } from '../../common/storage/local-storage.service';
+import { GridFsService } from '../../common/storage/gridfs.service';
 import { AssetService } from '../assets/asset.service';
 import { PipelineStateService } from '../pipeline/pipeline-state.service';
 import { GenerationQueueService } from '../pipeline/generation-queue.service';
@@ -46,7 +42,8 @@ import {
 } from '../pipeline/image-generation.service';
 import { PromptEnhancerService } from '../pipeline/prompt-enhancer.service';
 import { SceneRendererService } from '../pipeline/scene-renderer.service';
-import { ProjectAssemblerService } from '../pipeline/project-assembler.service';
+import { VoiceGenerationService } from '../pipeline/voice-generation.service';
+import { CompositionService } from '../pipeline/composition.service';
 
 export interface ProjectJson {
   id: string;
@@ -66,17 +63,23 @@ type StoryArtifact = StoryOutput & { status: ArtifactStatus };
 type SceneArtifact = SceneOutput & { status: ArtifactStatus };
 type DialogueArtifact = DialogueOutput & { status: ArtifactStatus };
 type PromptArtifact = PromptOutput & { status: ArtifactStatus };
-type VideoArtifact = VideoOutput & {
-  status: ArtifactStatus;
-  renderStatus?: 'completed';
-  finalPath?: string;
-  renderedAt?: string;
-};
 type SubtitleArtifact = SubtitleOutput & {
   status: ArtifactStatus;
-  srtPath: string;
+  srtContent: string;
+  finalPath?: string;
+  composedAt?: string;
 };
-type VoiceArtifact = VoiceOutput & {
+type VoiceArtifact = {
+  lines: Array<{
+    sceneId: string;
+    character: string;
+    text: string;
+    emotion: string;
+    audioAssetId: string;
+    duration: number;
+    status: string;
+  }>;
+  totalDuration: number;
   status: ArtifactStatus;
 };
 
@@ -92,18 +95,16 @@ export class ProjectsService {
     private readonly sceneAgent: SceneAgent,
     private readonly dialogueAgent: DialogueAgent,
     private readonly promptAgent: PromptAgent,
-    private readonly videoPreparationPipeline: VideoPreparationPipeline,
-    private readonly localVideoRenderer: LocalFfmpegVideoRendererService,
     private readonly subtitlePipeline: SubtitlePipeline,
-    private readonly localExportService: LocalFfmpegExportService,
-    private readonly voiceAgent: VoiceAgent,
     private readonly imageGenerationService: ImageGenerationService,
     private readonly promptEnhancerService: PromptEnhancerService,
     private readonly sceneRendererService: SceneRendererService,
+    private readonly voiceGenerationService: VoiceGenerationService,
+    private readonly compositionService: CompositionService,
     private readonly assetService: AssetService,
     private readonly pipelineStateService: PipelineStateService,
     private readonly generationQueueService: GenerationQueueService,
-    private readonly projectAssemblerService: ProjectAssemblerService,
+    private readonly gridfs: GridFsService,
   ) {}
 
   async create(
@@ -156,9 +157,6 @@ export class ProjectsService {
       await this.mongo.setArtifact(createdProject.id!, 'prompts', {
         status: 'pending',
       });
-      await this.mongo.setArtifact(createdProject.id!, 'video', {
-        status: 'pending',
-      });
       await this.mongo.setArtifact(createdProject.id!, 'subtitles', {
         status: 'pending',
       });
@@ -205,6 +203,18 @@ export class ProjectsService {
     };
   }
 
+  async list() {
+    const projects = await this.mongo.listProjects();
+
+    return {
+      success: true,
+      message: 'Projects retrieved successfully.',
+      data: projects,
+    };
+  }
+
+  // ─── Step 1: Director Plan ────────────────────────────────────────────────
+
   async getDirectorPlan(slug: string) {
     const project = await this.mongo.findBySlug(slug);
     if (!project) {
@@ -218,48 +228,6 @@ export class ProjectsService {
       success: true,
       message: 'Director plan retrieved successfully.',
       data,
-    };
-  }
-
-  async getStory(slug: string) {
-    const project = await this.mongo.findBySlug(slug);
-    if (!project) {
-      throw new NotFoundException(`Project "${slug}" not found.`);
-    }
-    const data = await this.mongo.getArtifact<Record<string, unknown>>(
-      project.id!,
-      'story',
-    );
-    return {
-      success: true,
-      message: 'Story retrieved successfully.',
-      data,
-    };
-  }
-
-  async getScenes(slug: string) {
-    const project = await this.mongo.findBySlug(slug);
-    if (!project) {
-      throw new NotFoundException(`Project "${slug}" not found.`);
-    }
-    const data = await this.mongo.getArtifact<Record<string, unknown>>(
-      project.id!,
-      'scenes',
-    );
-    return {
-      success: true,
-      message: 'Scenes retrieved successfully.',
-      data,
-    };
-  }
-
-  async list() {
-    const projects = await this.mongo.listProjects();
-
-    return {
-      success: true,
-      message: 'Projects retrieved successfully.',
-      data: projects,
     };
   }
 
@@ -290,17 +258,35 @@ export class ProjectsService {
     };
   }
 
+  // ─── Step 2: Story ───────────────────────────────────────────────────────
+
+  async getStory(slug: string) {
+    const project = await this.mongo.findBySlug(slug);
+    if (!project) {
+      throw new NotFoundException(`Project "${slug}" not found.`);
+    }
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id!,
+      'story',
+    );
+    return {
+      success: true,
+      message: 'Story retrieved successfully.',
+      data,
+    };
+  }
+
   async generateStory(slug: string) {
     const project = await this.loadProject(slug);
 
-    const directorRaw = (await this.mongo.getArtifact(
+    const directorRaw = await this.mongo.getArtifact<DirectorOutput>(
       project.id,
       'director',
-    )) as DirectorArtifact | null;
+    );
 
     if (!directorRaw || directorRaw.status !== 'ready') {
       throw new ConflictException(
-        'Director please is not ready, please generate director plan',
+        'Director plan is not ready, please generate director plan first.',
       );
     }
 
@@ -314,7 +300,7 @@ export class ProjectsService {
         style: project.style,
         humor: project.humor,
       },
-      directorPlan: directorRaw as DirectorOutput,
+      directorPlan: directorRaw,
     });
 
     const payload = { ...storyOutput, status: 'ready' as const };
@@ -331,17 +317,39 @@ export class ProjectsService {
     };
   }
 
+  // ─── Step 3: Scenes ──────────────────────────────────────────────────────
+
+  async getScenes(slug: string) {
+    const project = await this.mongo.findBySlug(slug);
+    if (!project) {
+      throw new NotFoundException(`Project "${slug}" not found.`);
+    }
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id!,
+      'scenes',
+    );
+    return {
+      success: true,
+      message: 'Scenes retrieved successfully.',
+      data,
+    };
+  }
+
   async generateScenes(slug: string) {
     const project = await this.loadProject(slug);
 
-    const directorRaw = (await this.mongo.getArtifact(
+    const directorRaw = await this.mongo.getArtifact<DirectorOutput>(
       project.id,
       'director',
-    )) as DirectorArtifact | null;
-    const storyRaw = (await this.mongo.getArtifact(
+    );
+    const storyRaw = await this.mongo.getArtifact<StoryOutput>(
       project.id,
       'story',
-    )) as StoryArtifact | null;
+    );
+
+    if (!directorRaw || directorRaw.status !== 'ready') {
+      throw new Error('Director plan must be generated before scenes.');
+    }
 
     if (!storyRaw || storyRaw.status !== 'ready') {
       throw new Error(
@@ -358,8 +366,8 @@ export class ProjectsService {
         platform: project.platform,
         style: project.style,
       },
-      directorPlan: directorRaw as DirectorOutput,
-      story: storyRaw as StoryOutput,
+      directorPlan: directorRaw,
+      story: storyRaw,
     });
 
     const payload = { ...sceneOutput, status: 'ready' as const };
@@ -378,6 +386,8 @@ export class ProjectsService {
     };
   }
 
+  // ─── Step 4: Dialogues ───────────────────────────────────────────────────
+
   async getDialogues(slug: string) {
     const project = await this.loadProject(slug);
     const data = await this.mongo.getArtifact<Record<string, unknown>>(
@@ -394,23 +404,31 @@ export class ProjectsService {
   async generateDialogues(slug: string) {
     const project = await this.loadProject(slug);
 
-    const directorRaw = (await this.mongo.getArtifact(
+    const directorRaw = await this.mongo.getArtifact<DirectorOutput>(
       project.id,
       'director',
-    )) as DirectorArtifact | null;
-    const storyRaw = (await this.mongo.getArtifact(
+    );
+    const storyRaw = await this.mongo.getArtifact<StoryOutput>(
       project.id,
       'story',
-    )) as StoryArtifact | null;
-    const scenesRaw = (await this.mongo.getArtifact(
+    );
+    const scenesRaw = await this.mongo.getArtifact<SceneOutput>(
       project.id,
       'scenes',
-    )) as SceneArtifact | null;
+    );
 
     if (!scenesRaw || scenesRaw.status !== 'ready') {
       throw new Error(
         'Scenes must be generated before dialogues. Call /scenes first.',
       );
+    }
+
+    if (!directorRaw || directorRaw.status !== 'ready') {
+      throw new Error('Director plan must be generated before dialogues.');
+    }
+
+    if (!storyRaw || storyRaw.status !== 'ready') {
+      throw new Error('Story must be generated before dialogues.');
     }
 
     this.logger.log(`Generating dialogues for project: "${slug}"`);
@@ -422,8 +440,8 @@ export class ProjectsService {
         platform: project.platform,
         style: project.style,
       },
-      directorPlan: directorRaw as DirectorOutput,
-      story: storyRaw as StoryOutput,
+      directorPlan: directorRaw,
+      story: storyRaw,
       scenes: scenesRaw.scenes,
     });
 
@@ -442,6 +460,8 @@ export class ProjectsService {
       data: payload,
     };
   }
+
+  // ─── Step 5: Prompts + Images ────────────────────────────────────────────
 
   async getPrompts(slug: string) {
     const project = await this.loadProject(slug);
@@ -465,18 +485,18 @@ export class ProjectsService {
 
   async generatePrompts(slug: string) {
     const project = await this.loadProject(slug);
-    const directorRaw = (await this.mongo.getArtifact(
+    const directorRaw = await this.mongo.getArtifact<DirectorOutput>(
       project.id,
       'director',
-    )) as DirectorArtifact | null;
-    const scenes = (await this.mongo.getArtifact(
+    );
+    const scenes = await this.mongo.getArtifact<SceneOutput>(
       project.id,
       'scenes',
-    )) as SceneArtifact | null;
-    const dialogues = (await this.mongo.getArtifact(
+    );
+    const dialogues = await this.mongo.getArtifact<DialogueOutput>(
       project.id,
       'dialogues',
-    )) as DialogueArtifact | null;
+    );
 
     if (
       !directorRaw ||
@@ -518,337 +538,16 @@ export class ProjectsService {
     };
   }
 
-  async getVideoPlan(slug: string) {
-    const project = await this.loadProject(slug);
-    const data = await this.mongo.getArtifact<Record<string, unknown>>(
-      project.id,
-      'video',
-    );
-    if (!data) {
-      return {
-        success: true,
-        message: 'Video render plan retrieved successfully.',
-        data: { status: 'pending' as const },
-      };
-    }
-    return {
-      success: true,
-      message: 'Video render plan retrieved successfully.',
-      data,
-    };
-  }
-
-  async prepareVideo(slug: string) {
-    const project = await this.loadProject(slug);
-    const scenes = (await this.mongo.getArtifact(
-      project.id,
-      'scenes',
-    )) as SceneArtifact | null;
-    const prompts = (await this.mongo.getArtifact(
-      project.id,
-      'prompts',
-    )) as PromptArtifact | null;
-
-    if (
-      !scenes ||
-      scenes.status !== 'ready' ||
-      !prompts ||
-      prompts.status !== 'ready'
-    ) {
-      throw new ConflictException(
-        'Scenes and render prompts must be generated before video preparation.',
-      );
-    }
-
-    const output = await this.videoPreparationPipeline.run({
-      project: {
-        topic: project.name,
-        language: project.language,
-        platform: project.platform,
-        style: project.style,
-        humor: project.humor,
-      },
-      scenes: scenes.scenes,
-      prompts: prompts.scenes,
-    });
-    const payload = { ...output, status: 'ready' as const };
-
-    await this.mongo.setArtifact(project.id, 'video', payload);
-    await this.updateProjectTimestamp(slug);
-
-    return {
-      success: true,
-      message: 'Video render plan prepared successfully.',
-      data: payload,
-    };
-  }
-
-  async renderVideo(slug: string) {
-    const project = await this.loadProject(slug);
-    const video = (await this.mongo.getArtifact(
-      project.id,
-      'video',
-    )) as VideoArtifact | null;
-
-    if (
-      !video ||
-      video.status !== 'ready' ||
-      !video.scenes ||
-      video.scenes.length === 0
-    ) {
-      throw new ConflictException(
-        'A video render plan must be prepared before rendering.',
-      );
-    }
-
-    const renderedVideo = await this.localVideoRenderer.render(
-      slug,
-      video.scenes.map((scene) => ({
-        id: scene.id,
-        duration: scene.duration,
-        prompt: scene.prompt,
-        mood: scene.mood,
-        scenePath: scene.scenePath,
-        status: scene.status,
-      })),
-    );
-    const payload: VideoArtifact = {
-      ...video,
-      scenes: video.scenes.map((scene) => ({ ...scene, status: 'ready' })),
-      renderStatus: 'completed',
-      finalPath: renderedVideo.finalPath,
-      renderedAt: renderedVideo.renderedAt,
-    };
-
-    await this.mongo.setArtifact(
-      project.id,
-      'video',
-      payload as unknown as Record<string, unknown>,
-    );
-    await this.updateProjectTimestamp(slug);
-
-    return {
-      success: true,
-      message: 'Local fallback video rendered successfully.',
-      data: payload,
-    };
-  }
-
-  async getSubtitles(slug: string) {
-    const project = await this.loadProject(slug);
-    const data = await this.mongo.getArtifact<Record<string, unknown>>(
-      project.id,
-      'subtitles',
-    );
-    if (!data) {
-      return {
-        success: true,
-        message: 'Subtitles retrieved successfully.',
-        data: { status: 'pending' as const },
-      };
-    }
-    return {
-      success: true,
-      message: 'Subtitles retrieved successfully.',
-      data,
-    };
-  }
-
-  async generateSubtitles(slug: string) {
-    const project = await this.loadProject(slug);
-    const scenes = (await this.mongo.getArtifact(
-      project.id,
-      'scenes',
-    )) as SceneArtifact | null;
-    const dialogues = (await this.mongo.getArtifact(
-      project.id,
-      'dialogues',
-    )) as DialogueArtifact | null;
-
-    if (
-      !scenes ||
-      scenes.status !== 'ready' ||
-      !dialogues ||
-      dialogues.status !== 'ready'
-    ) {
-      throw new ConflictException(
-        'Scenes and dialogues must be generated before subtitles.',
-      );
-    }
-
-    const output = await this.subtitlePipeline.run({
-      scenes: scenes.scenes,
-      dialogues: dialogues.scenes,
-    });
-
-    const srtPath = `projects/${slug}/subtitles/captions.srt`;
-    await this.mongo.setArtifact(project.id, 'subtitles', {
-      ...output,
-      srtPath,
-      status: 'ready' as const,
-    });
-    await this.updateProjectTimestamp(slug);
-
-    return {
-      success: true,
-      message: 'Subtitles generated successfully.',
-      data: { ...output, srtPath, status: 'ready' },
-    };
-  }
-
-  async getVoice(slug: string) {
-    const project = await this.loadProject(slug);
-    const data = await this.mongo.getArtifact<Record<string, unknown>>(
-      project.id,
-      'voice',
-    );
-    if (!data) {
-      return {
-        success: true,
-        message: 'Voice plan retrieved successfully.',
-        data: { status: 'pending' as const },
-      };
-    }
-    return {
-      success: true,
-      message: 'Voice plan retrieved successfully.',
-      data,
-    };
-  }
-
-  async generateVoice(slug: string) {
-    const project = await this.loadProject(slug);
-
-    const dialoguesRaw = (await this.mongo.getArtifact(
-      project.id,
-      'dialogues',
-    )) as DialogueArtifact | null;
-
-    if (!dialoguesRaw || dialoguesRaw.status !== 'ready') {
-      throw new ConflictException(
-        'Dialogues must be generated before voice. Call /dialogues first.',
-      );
-    }
-
-    this.logger.log(`Generating voice for project: "${slug}"`);
-
-    const voiceOutput = await this.voiceAgent.execute({
-      project: {
-        topic: project.name,
-        language: project.language,
-        platform: project.platform,
-        style: project.style,
-      },
-      dialogues: dialoguesRaw,
-    });
-
-    const payload = { ...voiceOutput, status: 'ready' as const };
-
-    await this.mongo.setArtifact(project.id, 'voice', payload);
-    await this.updateProjectTimestamp(slug);
-
-    this.logger.log(
-      `Voice saved for project: "${slug}", lines=${voiceOutput.scenes.length}`,
-    );
-
-    return {
-      success: true,
-      message: 'Voice generated successfully.',
-      data: payload,
-    };
-  }
-
-  async exportVideo(slug: string) {
-    const project = await this.loadProject(slug);
-    const video = (await this.mongo.getArtifact(
-      project.id,
-      'video',
-    )) as VideoArtifact | null;
-    const subtitles = (await this.mongo.getArtifact(
-      project.id,
-      'subtitles',
-    )) as SubtitleArtifact | null;
-
-    if (
-      !video ||
-      video.renderStatus !== 'completed' ||
-      !video.finalPath ||
-      !subtitles ||
-      subtitles.status !== 'ready'
-    ) {
-      throw new ConflictException(
-        'Render the video and generate subtitles before exporting.',
-      );
-    }
-
-    const videoFilePath = `projects/${slug}/${video.finalPath}`;
-    if (!(await this.storage.exists(videoFilePath))) {
-      throw new ConflictException(
-        `Rendered video file not found at "${video.finalPath}". Please re-render the video before exporting.`,
-      );
-    }
-
-    const subtitleFilePath = `projects/${slug}/${subtitles.srtPath}`;
-    if (!(await this.storage.exists(subtitleFilePath))) {
-      throw new ConflictException(
-        `Subtitle file not found at "${subtitles.srtPath}". Please regenerate subtitles before exporting.`,
-      );
-    }
-
-    const exportPath = await this.localExportService.export(
-      slug,
-      video.finalPath,
-      subtitles.srtPath,
-    );
-    return {
-      success: true,
-      message: 'Captioned video exported successfully.',
-      data: { path: exportPath },
-    };
-  }
-
-  async downloadExport(slug: string) {
-    const project = await this.loadProject(slug);
-    const video = (await this.mongo.getArtifact(
-      project.id,
-      'video',
-    )) as VideoArtifact | null;
-
-    if (!video || video.renderStatus !== 'completed' || !video.finalPath) {
-      throw new ConflictException(
-        'Render the video before downloading the final export.',
-      );
-    }
-
-    const filePath = `projects/${slug}/${video.finalPath}`;
-    if (!(await this.storage.exists(filePath))) {
-      throw new ConflictException(
-        `Rendered video file not found at "${video.finalPath}". Please re-render the video.`,
-      );
-    }
-
-    const buffer = await this.storage.readBinary(filePath);
-    const filename = `${slug}-final.mp4`;
-
-    return {
-      buffer,
-      filename,
-      contentType: 'video/mp4',
-    };
-  }
-
-  // ─── Image Generation ─────────────────────────────────────────────────────
-
   async generateImages(slug: string) {
     const project = await this.loadProject(slug);
-    const scenes = (await this.mongo.getArtifact(
+    const scenes = await this.mongo.getArtifact<SceneOutput>(
       project.id,
       'scenes',
-    )) as SceneArtifact | null;
-    const prompts = (await this.mongo.getArtifact(
+    );
+    const prompts = await this.mongo.getArtifact<PromptOutput>(
       project.id,
       'prompts',
-    )) as PromptArtifact | null;
+    );
 
     if (
       !scenes ||
@@ -884,7 +583,7 @@ export class ProjectsService {
     });
 
     const results = await this.imageGenerationService.generateImages({
-      projectId: project.id!,
+      projectId: project.id,
       projectSlug: slug,
       scenes: imageScenes,
     });
@@ -900,10 +599,10 @@ export class ProjectsService {
 
   async regenerateImage(slug: string, sceneId: string) {
     const project = await this.loadProject(slug);
-    const prompts = (await this.mongo.getArtifact(
+    const prompts = await this.mongo.getArtifact<PromptOutput>(
       project.id,
       'prompts',
-    )) as PromptArtifact | null;
+    );
 
     if (!prompts || prompts.status !== 'ready') {
       throw new ConflictException(
@@ -921,7 +620,7 @@ export class ProjectsService {
     );
 
     const result = await this.imageGenerationService.regenerateImage(
-      project.id!,
+      project.id,
       slug,
       sceneId,
       prompt,
@@ -938,7 +637,7 @@ export class ProjectsService {
 
   async getImages(slug: string) {
     const project = await this.loadProject(slug);
-    const assets = await this.assetService.listByProject(project.id!, 'IMAGE');
+    const assets = await this.assetService.listByProject(project.id, 'IMAGE');
 
     const results: ImageGenerationResult[] = assets.map((asset) => ({
       sceneId: asset.sceneId ?? '',
@@ -960,114 +659,145 @@ export class ProjectsService {
     };
   }
 
-  async getAssets(slug: string, type?: string) {
+  // ─── Step 6: Produce (Render + Voice + Subtitles + Compose) ─────────────
+
+  async getSubtitles(slug: string) {
     const project = await this.loadProject(slug);
-    const assets = await this.assetService.listByProject(
-      project.id!,
-      type as 'IMAGE' | 'VIDEO' | 'AUDIO' | 'SUBTITLE' | 'EXPORT' | undefined,
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id,
+      'subtitles',
     );
+    if (!data) {
+      return {
+        success: true,
+        message: 'Subtitles retrieved successfully.',
+        data: { status: 'pending' as const },
+      };
+    }
     return {
       success: true,
-      message: 'Assets retrieved successfully.',
-      data: assets,
+      message: 'Subtitles retrieved successfully.',
+      data,
     };
   }
 
-  async serveAssetFile(slug: string, assetId: string) {
+  async generateSubtitles(slug: string) {
     const project = await this.loadProject(slug);
-    const asset = await this.assetService.findById(assetId);
-    if (!asset || asset.projectId !== project.id) {
-      throw new NotFoundException(`Asset "${assetId}" not found.`);
-    }
-    const buffer = await this.storage.readBinary(asset.path!);
-    const ext = asset.filename?.split('.').pop()?.toLowerCase() ?? 'bin';
-    const mimeMap: Record<string, string> = {
-      mp4: 'video/mp4',
-      webm: 'video/webm',
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      srt: 'text/plain',
-    };
-    return {
-      buffer,
-      filename: asset.filename ?? `asset-${assetId}.${ext}`,
-      contentType: mimeMap[ext] ?? 'application/octet-stream',
-    };
-  }
-
-  // ─── Scene Rendering ──────────────────────────────────────────────────────
-
-  async renderScene(slug: string, sceneId: string) {
-    const project = await this.loadProject(slug);
-    const scenes = (await this.mongo.getArtifact(
+    const scenes = await this.mongo.getArtifact<SceneOutput>(
       project.id,
       'scenes',
-    )) as SceneArtifact | null;
-    const prompts = (await this.mongo.getArtifact(
+    );
+    const dialogues = await this.mongo.getArtifact<DialogueOutput>(
       project.id,
-      'prompts',
-    )) as PromptArtifact | null;
-    const assets = await this.assetService.listByProject(project.id!, 'IMAGE');
+      'dialogues',
+    );
 
-    if (!scenes || scenes.status !== 'ready') {
-      throw new ConflictException('Scenes must be generated before rendering.');
-    }
-
-    const scene = scenes.scenes.find((s) => String(s.id) === sceneId);
-    if (!scene) {
-      throw new NotFoundException(`Scene ${sceneId} not found.`);
-    }
-
-    const prompt = prompts?.scenes.find((p) => p.id === scene.id);
-    if (!prompt) {
+    if (
+      !scenes ||
+      scenes.status !== 'ready' ||
+      !dialogues ||
+      dialogues.status !== 'ready'
+    ) {
       throw new ConflictException(
-        `Render prompt for scene ${sceneId} not found.`,
+        'Scenes and dialogues must be generated before subtitles.',
       );
     }
 
-    const imageAsset = assets.find((a) => a.sceneId === sceneId);
-    if (!imageAsset) {
-      throw new ConflictException(
-        `Image for scene ${sceneId} not found. Generate images first.`,
-      );
-    }
-
-    this.logger.log(`Rendering scene ${sceneId} in project: "${slug}"`);
-
-    const results = await this.sceneRendererService.renderScenes({
-      projectId: project.id!,
-      projectSlug: slug,
-      scenes: [
-        {
-          id: sceneId,
-          duration: scene.duration,
-          imagePath: imageAsset.path!,
-          prompt,
-        },
-      ],
+    const output = await this.subtitlePipeline.run({
+      scenes: scenes.scenes,
+      dialogues: dialogues.scenes,
     });
 
+    const srtContent = toSrt(output.cues);
+
+    await this.mongo.setArtifact(project.id, 'subtitles', {
+      ...output,
+      srtContent,
+      status: 'ready' as const,
+    });
     await this.updateProjectTimestamp(slug);
 
     return {
       success: true,
-      message: `Scene ${sceneId} rendered successfully.`,
-      data: results[0],
+      message: 'Subtitles generated successfully.',
+      data: { ...output, srtContent, status: 'ready' },
+    };
+  }
+
+  async getVoice(slug: string) {
+    const project = await this.loadProject(slug);
+    const data = await this.mongo.getArtifact<Record<string, unknown>>(
+      project.id,
+      'voice',
+    );
+    if (!data) {
+      return {
+        success: true,
+        message: 'Voice plan retrieved successfully.',
+        data: { status: 'pending' as const },
+      };
+    }
+    return {
+      success: true,
+      message: 'Voice plan retrieved successfully.',
+      data,
+    };
+  }
+
+  async generateVoice(slug: string) {
+    const project = await this.loadProject(slug);
+
+    const dialoguesRaw = await this.mongo.getArtifact<DialogueOutput>(
+      project.id,
+      'dialogues',
+    );
+
+    if (!dialoguesRaw || dialoguesRaw.status !== 'ready') {
+      throw new ConflictException(
+        'Dialogues must be generated before voice. Call /dialogues first.',
+      );
+    }
+
+    this.logger.log(`Generating voice for project: "${slug}"`);
+
+    const voiceResult = await this.voiceGenerationService.generateVoice({
+      projectId: project.id,
+      projectSlug: slug,
+      language: project.language,
+      scenes: dialoguesRaw.scenes,
+    });
+
+    const payload = {
+      lines: voiceResult.lines,
+      totalDuration: voiceResult.totalDuration,
+      status: 'ready' as const,
+    };
+
+    await this.mongo.setArtifact(project.id, 'voice', payload);
+    await this.updateProjectTimestamp(slug);
+
+    this.logger.log(
+      `Voice saved for project: "${slug}", lines=${voiceResult.lines.length}`,
+    );
+
+    return {
+      success: true,
+      message: 'Voice generated successfully.',
+      data: payload,
     };
   }
 
   async renderProject(slug: string) {
     const project = await this.loadProject(slug);
-    const scenes = (await this.mongo.getArtifact(
+    const scenes = await this.mongo.getArtifact<SceneOutput>(
       project.id,
       'scenes',
-    )) as SceneArtifact | null;
-    const prompts = (await this.mongo.getArtifact(
+    );
+    const prompts = await this.mongo.getArtifact<PromptOutput>(
       project.id,
       'prompts',
-    )) as PromptArtifact | null;
-    const assets = await this.assetService.listByProject(project.id!, 'IMAGE');
+    );
+    const assets = await this.assetService.listByProject(project.id, 'IMAGE');
 
     if (!scenes || scenes.status !== 'ready') {
       throw new ConflictException('Scenes must be generated before rendering.');
@@ -1106,20 +836,9 @@ export class ProjectsService {
     });
 
     const results = await this.sceneRendererService.renderScenes({
-      projectId: project.id!,
+      projectId: project.id,
       projectSlug: slug,
       scenes: renderScenes,
-    });
-
-    // Assemble the final export
-    await this.projectAssemblerService.assembleExport({
-      projectId: project.id!,
-      projectSlug: slug,
-      scenes: results.map((r) => ({
-        id: r.sceneId,
-        duration: r.duration,
-        imagePath: r.videoPath,
-      })),
     });
 
     await this.updateProjectTimestamp(slug);
@@ -1131,13 +850,211 @@ export class ProjectsService {
     };
   }
 
+  async renderScene(slug: string, sceneId: string) {
+    const project = await this.loadProject(slug);
+    const scenes = await this.mongo.getArtifact<SceneOutput>(
+      project.id,
+      'scenes',
+    );
+    const prompts = await this.mongo.getArtifact<PromptOutput>(
+      project.id,
+      'prompts',
+    );
+    const assets = await this.assetService.listByProject(project.id, 'IMAGE');
+
+    if (!scenes || scenes.status !== 'ready') {
+      throw new ConflictException('Scenes must be generated before rendering.');
+    }
+
+    const scene = scenes.scenes.find((s) => String(s.id) === sceneId);
+    if (!scene) {
+      throw new NotFoundException(`Scene ${sceneId} not found.`);
+    }
+
+    const prompt = prompts?.scenes.find((p) => p.id === scene.id);
+    if (!prompt) {
+      throw new ConflictException(
+        `Render prompt for scene ${sceneId} not found.`,
+      );
+    }
+
+    const imageAsset = assets.find((a) => a.sceneId === sceneId);
+    if (!imageAsset) {
+      throw new ConflictException(
+        `Image for scene ${sceneId} not found. Generate images first.`,
+      );
+    }
+
+    this.logger.log(`Rendering scene ${sceneId} in project: "${slug}"`);
+
+    const results = await this.sceneRendererService.renderScenes({
+      projectId: project.id,
+      projectSlug: slug,
+      scenes: [
+        {
+          id: sceneId,
+          duration: scene.duration,
+          imagePath: imageAsset.path!,
+          prompt,
+        },
+      ],
+    });
+
+    await this.updateProjectTimestamp(slug);
+
+    return {
+      success: true,
+      message: `Scene ${sceneId} rendered successfully.`,
+      data: results[0],
+    };
+  }
+
+  async composeVideo(slug: string) {
+    const project = await this.loadProject(slug);
+    const scenes = await this.mongo.getArtifact<SceneOutput>(
+      project.id,
+      'scenes',
+    );
+    const subtitles = await this.mongo.getArtifact<
+      SubtitleOutput & { srtContent: string; finalPath?: string }
+    >(project.id, 'subtitles');
+
+    if (!scenes || scenes.status !== 'ready') {
+      throw new ConflictException('Scenes must be generated first.');
+    }
+
+    if (!subtitles || subtitles.status !== 'ready' || !subtitles.srtContent) {
+      throw new ConflictException(
+        'Subtitles must be generated before composing.',
+      );
+    }
+
+    const videoAssets = await this.assetService.listByProject(
+      project.id,
+      'VIDEO',
+    );
+    if (videoAssets.length === 0) {
+      throw new ConflictException(
+        'No rendered video clips found. Render scenes first.',
+      );
+    }
+
+    this.logger.log(`Composing final video for project: "${slug}"`);
+
+    const result = await this.compositionService.compose({
+      projectId: project.id,
+      projectSlug: slug,
+      scenes: scenes.scenes.map((s) => ({
+        id: String(s.id),
+        duration: s.duration,
+      })),
+      srtContent: subtitles.srtContent,
+    });
+
+    await this.mongo.setArtifact(project.id, 'subtitles', {
+      ...subtitles,
+      finalPath: result.finalPath,
+      composedAt: result.exportedAt,
+    });
+    await this.updateProjectTimestamp(slug);
+
+    return {
+      success: true,
+      message: 'Video composed successfully.',
+      data: result,
+    };
+  }
+
+  async getAssets(slug: string, type?: string) {
+    const project = await this.loadProject(slug);
+    const assets = await this.assetService.listByProject(
+      project.id,
+      type as 'IMAGE' | 'VIDEO' | 'AUDIO' | 'SUBTITLE' | 'EXPORT' | undefined,
+    );
+    return {
+      success: true,
+      message: 'Assets retrieved successfully.',
+      data: assets,
+    };
+  }
+
+  async serveAssetFile(slug: string, assetId: string) {
+    const project = await this.loadProject(slug);
+    const asset = await this.assetService.findById(assetId);
+    if (!asset || asset.projectId !== project.id) {
+      throw new NotFoundException(`Asset "${assetId}" not found.`);
+    }
+
+    const mimeMap: Record<string, string> = {
+      mp4: 'video/mp4',
+      webm: 'video/webm',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      srt: 'text/plain',
+    };
+    const ext = asset.filename?.split('.').pop()?.toLowerCase() ?? 'bin';
+
+    if (asset.gridfsId) {
+      const buffer = await this.gridfs.downloadFile(String(asset.gridfsId));
+      return {
+        buffer,
+        filename: asset.filename ?? `asset-${assetId}.${ext}`,
+        contentType: mimeMap[ext] ?? 'application/octet-stream',
+      };
+    }
+
+    if (asset.path?.startsWith('gridfs:')) {
+      const gridfsId = asset.path.replace('gridfs:', '');
+      const buffer = await this.gridfs.downloadFile(gridfsId);
+      return {
+        buffer,
+        filename: asset.filename ?? `asset-${assetId}.${ext}`,
+        contentType: mimeMap[ext] ?? 'application/octet-stream',
+      };
+    }
+
+    const buffer = await this.storage.readBinary(asset.path!);
+    return {
+      buffer,
+      filename: asset.filename ?? `asset-${assetId}.${ext}`,
+      contentType: mimeMap[ext] ?? 'application/octet-stream',
+    };
+  }
+
+  async downloadFinalVideo(slug: string) {
+    const project = await this.loadProject(slug);
+    const subtitles = await this.mongo.getArtifact<
+      SubtitleOutput & { srtContent: string; finalPath?: string }
+    >(project.id, 'subtitles');
+
+    const finalPath = subtitles?.finalPath;
+    if (!finalPath) {
+      throw new ConflictException(
+        'No final video found. Compose the video first.',
+      );
+    }
+
+    const gridfsId = finalPath.replace('gridfs:', '');
+    const buffer = await this.gridfs.downloadFile(gridfsId);
+    const filename = `${slug}-final.mp4`;
+
+    return {
+      buffer,
+      filename,
+      contentType: 'video/mp4',
+    };
+  }
+
   // ─── Pipeline Status ──────────────────────────────────────────────────────
 
   async getPipelineStatus(slug: string) {
     const project = await this.loadProject(slug);
-    const states = await this.pipelineStateService.findByProject(project.id!);
-    const jobs = await this.generationQueueService.listByProject(project.id!);
-    const assets = await this.assetService.listByProject(project.id!);
+    const states = await this.pipelineStateService.findByProject(project.id);
+    const jobs = await this.generationQueueService.listByProject(project.id);
+    const assets = await this.assetService.listByProject(project.id);
 
     return {
       success: true,
@@ -1188,7 +1105,7 @@ export class ProjectsService {
   async retryStage(slug: string, stage: string) {
     const project = await this.loadProject(slug);
     await this.pipelineStateService.retry(
-      project.id!,
+      project.id,
       stage as
         | 'director'
         | 'story'
@@ -1212,7 +1129,7 @@ export class ProjectsService {
   async resumePipeline(slug: string, stage: string) {
     const project = await this.loadProject(slug);
     await this.pipelineStateService.resume(
-      project.id!,
+      project.id,
       stage as
         | 'director'
         | 'story'

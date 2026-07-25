@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export type AssetDocument = Asset & Document;
 
@@ -66,6 +66,9 @@ export class Asset {
 
   @Prop({ type: Object })
   metadata?: Record<string, unknown>;
+
+  @Prop({ type: Types.ObjectId, ref: 'GridFS' })
+  gridfsId?: Types.ObjectId;
 
   @Prop({ default: Date.now })
   createdAt?: Date;

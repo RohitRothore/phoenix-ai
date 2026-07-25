@@ -17,7 +17,6 @@ export class MongoDBStorageService implements StorageService, OnModuleInit {
     // MongoDB doesn't need directory creation
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async writeJson(_path: string, _data: any): Promise<void> {
     // In MongoDB, we don't write JSON to paths directly
     // This method will be used differently in the repository pattern
@@ -28,7 +27,6 @@ export class MongoDBStorageService implements StorageService, OnModuleInit {
     // Similar to writeJson, this will be handled differently
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async readJson<T>(_path: string): Promise<T> {
     // This will be handled by the repository pattern
     throw new Error('Not implemented - use repository pattern instead');

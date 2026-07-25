@@ -10,7 +10,7 @@ import { ProviderRegistry } from '@phoenix/providers';
 import { AssetService } from '../assets/asset.service';
 import { PipelineStateService } from './pipeline-state.service';
 import { GenerationQueueService } from './generation-queue.service';
-import { LocalStorageService } from '../../common/storage/local-storage.service';
+import { GridFsService } from '../../common/storage/gridfs.service';
 import { FfmpegProcessService } from '../../common/rendering/ffmpeg-process.service';
 import { RenderPrompt } from '../ai/agents/prompt/prompt.types';
 
@@ -47,7 +47,7 @@ export class ImageGenerationService {
     private readonly assetService: AssetService,
     private readonly pipelineState: PipelineStateService,
     private readonly queueService: GenerationQueueService,
-    private readonly storage: LocalStorageService,
+    private readonly gridfs: GridFsService,
     private readonly ffmpeg: FfmpegProcessService,
   ) {}
 
@@ -101,28 +101,26 @@ export class ImageGenerationService {
           style: scene.prompt.mood,
         });
 
-        // Avoid duplicate asset on unique project+scene+type
         const existing = await this.assetService.findByProjectAndScene(
           projectId,
           scene.id,
           'IMAGE',
         );
         if (existing) {
+          const oldGridfsId = existing.path?.replace('gridfs:', '') ?? '';
+          if (oldGridfsId) {
+            await this.gridfs.deleteFile(oldGridfsId).catch(() => {});
+          }
           await this.assetService.delete(existing._id?.toString() ?? '');
         }
 
-        // Save the image to disk
-        const imagePath = `projects/${projectSlug}/${response.imagePath}`;
+        let imageBuffer: Buffer | null = null;
+
         if (response.imageUrl.startsWith('http')) {
-          // Download the image from the URL
           try {
             const res = await fetch(response.imageUrl);
             if (res.ok) {
-              const buffer = await res.arrayBuffer();
-              await this.storage.createDirectory(
-                `projects/${projectSlug}/images`,
-              );
-              await this.storage.writeBinary(imagePath, Buffer.from(buffer));
+              imageBuffer = Buffer.from(await res.arrayBuffer());
             }
           } catch (e) {
             this.logger.warn(
@@ -130,24 +128,33 @@ export class ImageGenerationService {
             );
           }
         } else if (response.imageUrl.startsWith('data:image')) {
-          // Persist base64 encoded image data from provider
           try {
             const base64Data = response.imageUrl.split(',')[1];
-            const buffer = Buffer.from(base64Data, 'base64');
-            await this.storage.createDirectory(
-              `projects/${projectSlug}/images`,
-            );
-            await this.storage.writeBinary(imagePath, buffer);
+            imageBuffer = Buffer.from(base64Data, 'base64');
           } catch (e) {
             this.logger.warn(
               `Failed to persist generated image: ${(e as Error).message}`,
             );
           }
-        } else {
-          // Mock provider - create a placeholder image using FFmpeg
-          await this.storage.createDirectory(`projects/${projectSlug}/images`);
-          await this.generatePlaceholderImage(imagePath, scene.prompt);
         }
+
+        if (!imageBuffer) {
+          imageBuffer = await this.generatePlaceholderImageBuffer(scene.prompt);
+        }
+
+        const gridfsFilename = `${projectSlug}/images/scene-${scene.id}.png`;
+        const gridfsId = await this.gridfs.uploadFile(
+          gridfsFilename,
+          imageBuffer,
+          {
+            projectId,
+            sceneId: scene.id,
+            provider: response.provider,
+            model: response.model,
+          },
+        );
+
+        const imagePath = `gridfs:${gridfsId}`;
 
         const asset = await this.assetService.create({
           projectId,
@@ -168,6 +175,7 @@ export class ImageGenerationService {
             camera: scene.prompt.camera,
             lighting: scene.prompt.lighting,
             mood: scene.prompt.mood,
+            gridfsId,
           },
         });
 
@@ -240,13 +248,16 @@ export class ImageGenerationService {
     sceneId: string,
     prompt: RenderPrompt,
   ): Promise<ImageGenerationResult> {
-    // Delete existing image asset for this scene
     const existing = await this.assetService.findByProjectAndScene(
       projectId,
       sceneId,
       'IMAGE',
     );
     if (existing) {
+      const oldGridfsId = existing.path?.replace('gridfs:', '') ?? '';
+      if (oldGridfsId) {
+        await this.gridfs.deleteFile(oldGridfsId).catch(() => {});
+      }
       await this.assetService.delete(existing._id?.toString() ?? '');
     }
 
@@ -259,11 +270,10 @@ export class ImageGenerationService {
     return results[0];
   }
 
-  private async generatePlaceholderImage(
-    imagePath: string,
+  private async generatePlaceholderImageBuffer(
     prompt: RenderPrompt,
-  ): Promise<void> {
-    const absPath = this.storage.getAbsolutePath(imagePath);
+  ): Promise<Buffer> {
+    const tempPath = `/tmp/phoenix-placeholder-${Date.now()}.png`;
 
     await this.ffmpeg.run(
       [
@@ -272,13 +282,16 @@ export class ImageGenerationService {
         'lavfi',
         '-i',
         `color=c=7c3aed:s=1024x1024:d=1`,
-        '-vf',
-        `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='Scene ${prompt.id}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2`,
         '-frames:v',
         '1',
-        absPath,
+        tempPath,
       ],
       'generate placeholder image',
     );
+
+    const fs = await import('fs/promises');
+    const buffer = await fs.readFile(tempPath);
+    await fs.unlink(tempPath).catch(() => {});
+    return buffer;
   }
 }

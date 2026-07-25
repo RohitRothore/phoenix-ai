@@ -31,39 +31,29 @@ export interface DialoguesStepProps extends BaseStepProps {
 export interface PromptsStepProps extends BaseStepProps {
   prompts: import("@/features/projects/services/project.service").Prompts | null;
   scenes: import("@/features/projects/services/project.service").Scenes | null;
-  onGeneratePrompts: () => Promise<void>;
-}
-
-export interface ImagesStepProps extends BaseStepProps {
   imageResults: import("@/features/projects/services/project.service").ImageGenerationResult[] | null;
-  scenes: import("@/features/projects/services/project.service").Scenes | null;
-  prompts: import("@/features/projects/services/project.service").Prompts | null;
   assets: import("@/features/projects/services/project.service").Asset[] | null;
+  onGeneratePrompts: () => Promise<void>;
   onGenerateImages: () => Promise<void>;
   onRegenerateImage: (sceneId: string) => Promise<void>;
   onRefreshPipeline: () => Promise<void>;
-  onRenderScene: (sceneId: string) => Promise<void>;
 }
 
-export interface RenderStepProps extends BaseStepProps {
-  renderResults: import("@/features/projects/services/project.service").SceneRenderResult[] | null;
+export interface ProduceStepProps extends BaseStepProps {
   scenes: import("@/features/projects/services/project.service").Scenes | null;
-  assets: import("@/features/projects/services/project.service").Asset[] | null;
-  pipelineStatus: import("@/features/projects/services/project.service").PipelineStatus | null;
+  prompts: import("@/features/projects/services/project.service").Prompts | null;
   imageResults: import("@/features/projects/services/project.service").ImageGenerationResult[] | null;
-  onRenderProject: () => Promise<void>;
-  onRefreshPipeline: () => Promise<void>;
-  onRenderScene: (sceneId: string) => Promise<void>;
-}
-
-export interface VideoStepProps extends BaseStepProps {
-  videoPlan: import("@/features/projects/services/project.service").VideoPlan | null;
+  renderResults: import("@/features/projects/services/project.service").SceneRenderResult[] | null;
+  voiceResult: import("@/features/projects/services/project.service").VoiceGenerationResult | null;
   subtitles: import("@/features/projects/services/project.service").Subtitles | null;
-  exportPath: string | null;
-  onPrepareVideo: () => Promise<void>;
-  onRenderVideo: () => Promise<void>;
+  compositionResult: import("@/features/projects/services/project.service").CompositionResult | null;
+  assets: import("@/features/projects/services/project.service").Asset[] | null;
+  onRenderProject: () => Promise<void>;
+  onRenderScene: (sceneId: string) => Promise<void>;
+  onGenerateVoice: () => Promise<void>;
   onGenerateSubtitles: () => Promise<void>;
-  onExportVideo: () => Promise<void>;
+  onComposeVideo: () => Promise<void>;
+  onRefreshPipeline: () => Promise<void>;
 }
 
 // Re-export Step type for convenience

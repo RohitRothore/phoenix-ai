@@ -10,17 +10,8 @@ import {
   CheckCircle2,
   Lock,
   Loader2,
-  Clock,
   AlertTriangle,
-  Download,
-  Play,
-  RefreshCw,
-  Activity,
 } from "lucide-react";
-
-// NOTE: PromptField helper kept in ProjectWorkspace for backward compatibility
-// if any other module imports it from here. Prefer using the one inside
-// PromptsStep going forward.
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,23 +20,22 @@ import {
   generateScenes,
   generateDialogues,
   generatePrompts,
-  prepareVideo,
-  renderVideo,
   generateSubtitles,
   getSubtitles,
-  exportVideo,
   getDirectorPlan,
   getStory,
   getScenes,
   getDialogues,
   getPrompts,
-  getVideoPlan,
   generateImages,
   getImages,
   regenerateImage,
   getAssets,
   renderScene,
   renderProject,
+  generateVoice,
+  getVoice,
+  composeVideo,
   getPipelineStatus,
   type Project,
   type DirectorPlan,
@@ -53,12 +43,13 @@ import {
   type Scenes,
   type Dialogues,
   type Prompts,
-  type VideoPlan,
   type Subtitles,
   type ImageGenerationResult,
   type Asset,
   type SceneRenderResult,
   type PipelineStatus,
+  type VoiceGenerationResult,
+  type CompositionResult,
 } from "@/features/projects/services/project.service";
 
 import {
@@ -67,9 +58,7 @@ import {
   ScenesStep,
   DialoguesStep,
   PromptsStep,
-  ImagesStep,
-  RenderStep,
-  VideoStep,
+  ProduceStep,
 } from "@/features/projects/components/project-workspace";
 
 type ProjectWorkspaceProps = {
@@ -82,15 +71,7 @@ export type Step =
   | "scenes"
   | "dialogues"
   | "prompts"
-  | "images"
-  | "render"
-  | "video";
-
-// Re-export for convenience if needed elsewhere
-export type {
-  DirectorStepProps,
-  StoryStepProps,
-} from "@/features/projects/components/project-workspace/step-types";
+  | "produce";
 
 export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [activeStep, setActiveStep] = useState<Step>("director");
@@ -100,9 +81,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     scenes: false,
     dialogues: false,
     prompts: false,
-    images: false,
-    render: false,
-    video: false,
+    produce: false,
   });
 
   const [plan, setPlan] = useState<DirectorPlan | null>(null);
@@ -110,15 +89,18 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [scenes, setScenes] = useState<Scenes | null>(null);
   const [dialogues, setDialogues] = useState<Dialogues | null>(null);
   const [prompts, setPrompts] = useState<Prompts | null>(null);
-  const [videoPlan, setVideoPlan] = useState<VideoPlan | null>(null);
   const [subtitles, setSubtitles] = useState<Subtitles | null>(null);
-  const [exportPath, setExportPath] = useState<string | null>(null);
   const [imageResults, setImageResults] = useState<
     ImageGenerationResult[] | null
   >(null);
   const [renderResults, setRenderResults] = useState<
     SceneRenderResult[] | null
   >(null);
+  const [voiceResult, setVoiceResult] = useState<VoiceGenerationResult | null>(
+    null,
+  );
+  const [compositionResult, setCompositionResult] =
+    useState<CompositionResult | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(
     null,
   );
@@ -149,13 +131,13 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
         if (promptsRes.data && promptsRes.data.status === "ready")
           setPrompts(promptsRes.data);
 
-        const videoRes = await getVideoPlan(project.slug);
-        if (videoRes.data && videoRes.data.status === "ready")
-          setVideoPlan(videoRes.data);
-
         const subtitlesRes = await getSubtitles(project.slug);
         if (subtitlesRes.data && subtitlesRes.data.status === "ready")
           setSubtitles(subtitlesRes.data);
+
+        const voiceRes = await getVoice(project.slug);
+        if (voiceRes.data && voiceRes.data.lines?.length > 0)
+          setVoiceResult(voiceRes.data);
 
         const assetsRes = await getAssets(project.slug);
         if (assetsRes.data) {
@@ -163,7 +145,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
           const videoAssets = assetsRes.data.filter(
             (a) => a.type === "VIDEO" && a.status === "ready",
           );
-          if (videoAssets.length > 0 && !renderResults) {
+          if (videoAssets.length > 0) {
             setRenderResults(
               videoAssets.map((a) => ({
                 sceneId: a.sceneId,
@@ -189,6 +171,8 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     };
     void loadWorkspace();
   }, [project.slug]);
+
+  // ─── Step Handlers ──────────────────────────────────────────────────────
 
   const handleGenerateDirectorPlan = async () => {
     setLoading((prev) => ({ ...prev, director: true }));
@@ -256,7 +240,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   };
 
   const handleGenerateImages = async () => {
-    setLoading((prev) => ({ ...prev, images: true }));
+    setLoading((prev) => ({ ...prev, prompts: true }));
     setError(null);
     try {
       const response = await generateImages(project.slug);
@@ -266,12 +250,12 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to generate images."));
     } finally {
-      setLoading((prev) => ({ ...prev, images: false }));
+      setLoading((prev) => ({ ...prev, prompts: false }));
     }
   };
 
   const handleRegenerateImage = async (sceneId: string) => {
-    setLoading((prev) => ({ ...prev, images: true }));
+    setLoading((prev) => ({ ...prev, prompts: true }));
     setError(null);
     try {
       const response = await regenerateImage(project.slug, sceneId);
@@ -285,12 +269,12 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to regenerate image."));
     } finally {
-      setLoading((prev) => ({ ...prev, images: false }));
+      setLoading((prev) => ({ ...prev, prompts: false }));
     }
   };
 
   const handleRenderScene = async (sceneId: string) => {
-    setLoading((prev) => ({ ...prev, render: true }));
+    setLoading((prev) => ({ ...prev, produce: true }));
     setError(null);
     try {
       const response = await renderScene(project.slug, sceneId);
@@ -302,12 +286,12 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to render scene."));
     } finally {
-      setLoading((prev) => ({ ...prev, render: false }));
+      setLoading((prev) => ({ ...prev, produce: false }));
     }
   };
 
   const handleRenderProject = async () => {
-    setLoading((prev) => ({ ...prev, render: true }));
+    setLoading((prev) => ({ ...prev, produce: true }));
     setError(null);
     try {
       const response = await renderProject(project.slug);
@@ -315,7 +299,46 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to render project."));
     } finally {
-      setLoading((prev) => ({ ...prev, render: false }));
+      setLoading((prev) => ({ ...prev, produce: false }));
+    }
+  };
+
+  const handleGenerateVoice = async () => {
+    setLoading((prev) => ({ ...prev, produce: true }));
+    setError(null);
+    try {
+      const response = await generateVoice(project.slug);
+      setVoiceResult(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate voice."));
+    } finally {
+      setLoading((prev) => ({ ...prev, produce: false }));
+    }
+  };
+
+  const handleGenerateSubtitles = async () => {
+    setLoading((prev) => ({ ...prev, produce: true }));
+    setError(null);
+    try {
+      const response = await generateSubtitles(project.slug);
+      setSubtitles(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate subtitles."));
+    } finally {
+      setLoading((prev) => ({ ...prev, produce: false }));
+    }
+  };
+
+  const handleComposeVideo = async () => {
+    setLoading((prev) => ({ ...prev, produce: true }));
+    setError(null);
+    try {
+      const response = await composeVideo(project.slug);
+      setCompositionResult(response.data);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to compose video."));
+    } finally {
+      setLoading((prev) => ({ ...prev, produce: false }));
     }
   };
 
@@ -330,67 +353,14 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     }
   };
 
-  const handlePrepareVideo = async () => {
-    setLoading((prev) => ({ ...prev, render: true }));
-    setError(null);
-    try {
-      const response = await prepareVideo(project.slug);
-      setVideoPlan(response.data);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to prepare video rendering."));
-    } finally {
-      setLoading((prev) => ({ ...prev, render: false }));
-    }
-  };
-
-  const handleRenderVideo = async () => {
-    setLoading((prev) => ({ ...prev, render: true }));
-    setError(null);
-    try {
-      const response = await renderVideo(project.slug);
-      setVideoPlan(response.data);
-    } catch (err: unknown) {
-      setError(
-        getErrorMessage(err, "Failed to render the local fallback video."),
-      );
-    } finally {
-      setLoading((prev) => ({ ...prev, render: false }));
-    }
-  };
-
-  const handleGenerateSubtitles = async () => {
-    setLoading((prev) => ({ ...prev, render: true }));
-    setError(null);
-    try {
-      const response = await generateSubtitles(project.slug);
-      setSubtitles(response.data);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to generate subtitles."));
-    } finally {
-      setLoading((prev) => ({ ...prev, render: false }));
-    }
-  };
-
-  const handleExportVideo = async () => {
-    setLoading((prev) => ({ ...prev, render: true }));
-    setError(null);
-    try {
-      const response = await exportVideo(project.slug);
-      setExportPath(response.data.path);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to export the captioned video."));
-    } finally {
-      setLoading((prev) => ({ ...prev, render: false }));
-    }
-  };
+  // ─── Step Locking ──────────────────────────────────────────────────────
 
   const isStepLocked = (step: Step): boolean => {
     if (step === "story") return !plan;
     if (step === "scenes") return !story;
     if (step === "dialogues") return !scenes;
     if (step === "prompts") return !dialogues;
-    if (step === "images") return !prompts;
-    if (step === "render") return !prompts;
+    if (step === "produce") return !prompts;
     return false;
   };
 
@@ -400,9 +370,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     scenes: "Scenes",
     dialogues: "Dialogue",
     prompts: "Prompts",
-    images: "AI Images",
-    render: "Render",
-    video: "Video",
+    produce: "Produce",
   };
 
   const stepIcons: Record<Step, React.ReactNode> = {
@@ -411,9 +379,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     scenes: <Film className="size-3.5 text-[#A78BFA]" />,
     dialogues: <BookOpenText className="size-3.5 text-[#A78BFA]" />,
     prompts: <Sparkles className="size-3.5 text-[#A78BFA]" />,
-    images: <Sparkles className="size-3.5 text-[#A78BFA]" />,
-    render: <Film className="size-3.5 text-[#A78BFA]" />,
-    video: <Film className="size-3.5 text-[#A78BFA]" />,
+    produce: <Film className="size-3.5 text-[#A78BFA]" />,
   };
 
   const stepCompleted: Record<Step, boolean> = {
@@ -421,10 +387,8 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
     story: !!story,
     scenes: !!scenes,
     dialogues: !!dialogues,
-    prompts: !!prompts,
-    images: !!imageResults,
-    render: !!renderResults,
-    video: !!videoPlan,
+    prompts: !!prompts && !!imageResults,
+    produce: !!renderResults,
   };
 
   return (
@@ -434,7 +398,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-full bg-[#7C3AED]/10 px-2.5 py-0.5 text-xs font-medium text-[#A78BFA] border border-[#7C3AED]/20">
-              v0.1 Slice
+              v0.2
             </span>
             <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 font-semibold">
               Project Workspace
@@ -544,76 +508,41 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
             projectSlug={project.slug}
             prompts={prompts}
             scenes={scenes}
+            imageResults={imageResults}
+            assets={assets}
             loading={loading}
             error={error}
             setError={setError}
             onGeneratePrompts={handleGeneratePrompts}
-          />
-        )}
-
-        {activeStep === "images" && (
-          <ImagesStep
-            projectSlug={project.slug}
-            imageResults={imageResults}
-            scenes={scenes}
-            prompts={prompts}
-            assets={assets}
-            loading={loading}
-            error={error}
-            setError={setError}
             onGenerateImages={handleGenerateImages}
             onRegenerateImage={handleRegenerateImage}
             onRefreshPipeline={handleRefreshPipeline}
-            onRenderScene={handleRenderScene}
           />
         )}
 
-        {activeStep === "render" && (
-          <RenderStep
+        {activeStep === "produce" && (
+          <ProduceStep
             projectSlug={project.slug}
-            renderResults={renderResults}
             scenes={scenes}
-            assets={assets}
-            pipelineStatus={pipelineStatus}
+            prompts={prompts}
             imageResults={imageResults}
+            renderResults={renderResults}
+            voiceResult={voiceResult}
+            subtitles={subtitles}
+            compositionResult={compositionResult}
+            assets={assets}
             loading={loading}
             error={error}
             setError={setError}
             onRenderProject={handleRenderProject}
-            onRefreshPipeline={handleRefreshPipeline}
             onRenderScene={handleRenderScene}
-          />
-        )}
-
-        {activeStep === "video" && (
-          <VideoStep
-            projectSlug={project.slug}
-            videoPlan={videoPlan}
-            subtitles={subtitles}
-            exportPath={exportPath}
-            loading={loading}
-            error={error}
-            setError={setError}
-            onPrepareVideo={handlePrepareVideo}
-            onRenderVideo={handleRenderVideo}
+            onGenerateVoice={handleGenerateVoice}
             onGenerateSubtitles={handleGenerateSubtitles}
-            onExportVideo={handleExportVideo}
+            onComposeVideo={handleComposeVideo}
+            onRefreshPipeline={handleRefreshPipeline}
           />
         )}
       </div>
-    </div>
-  );
-}
-
-function PromptField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="space-y-1 rounded-lg border border-[#27272A]/40 bg-[#0a0a0b] p-3">
-      <span className="block text-[10px] font-bold uppercase tracking-widest text-[#7C3AED]">
-        {label}
-      </span>
-      <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-400">
-        {value}
-      </p>
     </div>
   );
 }

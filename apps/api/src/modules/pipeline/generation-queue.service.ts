@@ -49,7 +49,9 @@ export class GenerationQueueService {
     } else if (status === 'failed') {
       update.failedAt = new Date();
     }
-    return this.jobModel.findByIdAndUpdate(jobId, update, { returnDocument: 'after' }).exec();
+    return this.jobModel
+      .findByIdAndUpdate(jobId, update, { returnDocument: 'after' })
+      .exec();
   }
 
   async setResponse(

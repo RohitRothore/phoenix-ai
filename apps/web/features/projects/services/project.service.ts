@@ -101,32 +101,9 @@ export interface Prompts {
   generatedAt: string;
 }
 
-export interface VideoScene {
-  id: number;
-  scenePath: string;
-  duration: number;
-  prompt: string;
-  negativePrompt: string;
-  camera: string;
-  lighting: string;
-  mood: string;
-  status: "pending" | "generating" | "ready" | "failed";
-}
-
-export interface VideoPlan {
-  scenes: VideoScene[];
-  status: string;
-  resolution: "1080x1920";
-  frameRate: 24 | 30;
-  generatedAt: string;
-  renderStatus?: "completed";
-  finalPath?: string;
-  renderedAt?: string;
-}
-
 export interface Subtitles {
   cues: Array<{ index: number; startTime: string; endTime: string; text: string }>;
-  srtPath: string;
+  srtContent?: string;
   status: string;
   generatedAt: string;
 }
@@ -171,6 +148,27 @@ export interface SceneRenderResult {
   width: number;
   height: number;
   fps: number;
+}
+
+export interface VoiceLineResult {
+  sceneId: string;
+  character: string;
+  text: string;
+  emotion: string;
+  audioAssetId: string;
+  duration: number;
+  status: 'ready' | 'error';
+}
+
+export interface VoiceGenerationResult {
+  lines: VoiceLineResult[];
+  totalDuration: number;
+}
+
+export interface CompositionResult {
+  finalPath: string;
+  duration: number;
+  exportedAt: string;
 }
 
 export interface PipelineStageInfo {
@@ -310,32 +308,6 @@ export async function getPrompts(slug: string) {
   return request<Prompts>(`/projects/${slug}/prompts`);
 }
 
-export async function prepareVideo(slug: string) {
-  return request<VideoPlan>(`/projects/${slug}/video`, { method: "POST" });
-}
-
-export async function getVideoPlan(slug: string) {
-  return request<VideoPlan>(`/projects/${slug}/video`);
-}
-
-export async function renderVideo(slug: string) {
-  return request<VideoPlan>(`/projects/${slug}/video/render`, { method: "POST" });
-}
-
-export async function generateSubtitles(slug: string) {
-  return request<Subtitles>(`/projects/${slug}/subtitles`, { method: "POST" });
-}
-
-export async function getSubtitles(slug: string) {
-  return request<Subtitles>(`/projects/${slug}/subtitles`);
-}
-
-export async function exportVideo(slug: string) {
-  return request<{ path: string }>(`/projects/${slug}/export`, { method: "POST" });
-}
-
-// ─── Image Generation API ─────────────────────────────────────────────────────
-
 export async function generateImages(slug: string) {
   return request<ImageGenerationResult[]>(`/projects/${slug}/images`, {
     method: 'POST',
@@ -353,11 +325,6 @@ export async function regenerateImage(slug: string, sceneId: string) {
   );
 }
 
-export async function getAssets(slug: string, type?: string) {
-  const query = type ? `?type=${type}` : '';
-  return request<Asset[]>(`/projects/${slug}/assets${query}`);
-}
-
 // ─── Scene Rendering API ──────────────────────────────────────────────────────
 
 export async function renderScene(slug: string, sceneId: string) {
@@ -371,6 +338,43 @@ export async function renderProject(slug: string) {
   return request<SceneRenderResult[]>(`/projects/${slug}/render`, {
     method: 'POST',
   });
+}
+
+// ─── Voice API ────────────────────────────────────────────────────────────────
+
+export async function generateVoice(slug: string) {
+  return request<VoiceGenerationResult>(`/projects/${slug}/voice`, {
+    method: 'POST',
+  });
+}
+
+export async function getVoice(slug: string) {
+  return request<VoiceGenerationResult>(`/projects/${slug}/voice`);
+}
+
+// ─── Subtitles API ────────────────────────────────────────────────────────────
+
+export async function generateSubtitles(slug: string) {
+  return request<Subtitles>(`/projects/${slug}/subtitles`, { method: "POST" });
+}
+
+export async function getSubtitles(slug: string) {
+  return request<Subtitles>(`/projects/${slug}/subtitles`);
+}
+
+// ─── Composition API ──────────────────────────────────────────────────────────
+
+export async function composeVideo(slug: string) {
+  return request<CompositionResult>(`/projects/${slug}/compose`, {
+    method: 'POST',
+  });
+}
+
+// ─── Assets API ──────────────────────────────────────────────────────────────
+
+export async function getAssets(slug: string, type?: string) {
+  const query = type ? `?type=${type}` : '';
+  return request<Asset[]>(`/projects/${slug}/assets${query}`);
 }
 
 // ─── Pipeline Status API ─────────────────────────────────────────────────────
