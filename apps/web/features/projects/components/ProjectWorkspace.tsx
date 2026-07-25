@@ -18,6 +18,10 @@ import {
   Activity,
 } from "lucide-react";
 
+// NOTE: PromptField helper kept in ProjectWorkspace for backward compatibility
+// if any other module imports it from here. Prefer using the one inside
+// PromptsStep going forward.
+
 import { Button } from "@/components/ui/button";
 import {
   generateDirectorPlan,
@@ -56,11 +60,22 @@ import {
   type PipelineStatus,
 } from "@/features/projects/services/project.service";
 
+import {
+  DirectorStep,
+  StoryStep,
+  ScenesStep,
+  DialoguesStep,
+  PromptsStep,
+  ImagesStep,
+  RenderStep,
+  VideoStep,
+} from "@/features/projects/components/project-workspace";
+
 type ProjectWorkspaceProps = {
   project: Project;
 };
 
-type Step =
+export type Step =
   | "director"
   | "story"
   | "scenes"
@@ -69,6 +84,9 @@ type Step =
   | "images"
   | "render"
   | "video";
+
+// Re-export for convenience if needed elsewhere
+export type { DirectorStepProps, StoryStepProps } from "@/features/projects/components/project-workspace/step-types";
 
 export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [activeStep, setActiveStep] = useState<Step>("director");
@@ -452,1259 +470,110 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
       {/* Main Workspace Display Content */}
       <div className="flex-1 min-h-[400px]">
         {activeStep === "director" && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-6 md:col-span-1">
-              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Compass className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">
-                    Director Plan
-                  </h3>
-                </div>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  The Director AI analyzes your project topic, humor style, and
-                  target platform to establish creative boundaries, comedic
-                  tone, pacing, and visual look.
-                </p>
-                {!plan ? (
-                  <Button
-                    onClick={handleGenerateDirectorPlan}
-                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
-                    disabled={loading.director}
-                  >
-                    {loading.director ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Analyzing Style...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4" />
-                        Generate Director Plan
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleGenerateDirectorPlan}
-                    variant="outline"
-                    className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-5"
-                    disabled={loading.director}
-                  >
-                    {loading.director ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Re-analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4 text-[#A78BFA]" />
-                        Regenerate Plan
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              {plan ? (
-                <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-6">
-                  <div className="grid gap-6 sm:grid-cols-2">
-                    <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                        Genre
-                      </p>
-                      <p className="text-lg font-bold text-white">
-                        {plan.genre}
-                      </p>
-                    </div>
-                    <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                        Target Audience
-                      </p>
-                      <p className="text-lg font-bold text-white">
-                        {plan.targetAudience}
-                      </p>
-                    </div>
-                    <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                        Tone
-                      </p>
-                      <p className="text-lg font-bold text-white">
-                        {plan.tone}
-                      </p>
-                    </div>
-                    <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                        Pacing
-                      </p>
-                      <p className="text-lg font-bold text-white">
-                        {plan.pacing}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
-                      Story Structure
-                    </h4>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {plan.storyStructure.map((step, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <span className="rounded-lg bg-[#27272A] px-3.5 py-1.5 text-xs font-semibold text-zinc-200 border border-[#3f3f46]">
-                            {step}
-                          </span>
-                          {idx < plan.storyStructure.length - 1 && (
-                            <span className="text-zinc-600 font-bold">→</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                    <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                      Visual Style
-                    </p>
-                    <p className="text-sm text-zinc-300 leading-relaxed">
-                      {plan.visualStyle}
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
-                      Comedic Mechanics
-                    </h4>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {plan.comedyMechanics.map((mech, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-2.5 rounded-lg bg-[#18181B]/50 px-3.5 py-2.5 text-sm text-zinc-300 border border-[#27272A]/40"
-                        >
-                          <span className="size-1.5 rounded-full bg-[#A78BFA]" />
-                          <span>{mech}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5 p-4 rounded-xl bg-[#18181B] border border-[#27272A]/50">
-                    <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                      Content Constraints & Guidelines
-                    </p>
-                    <p className="text-sm text-zinc-300 leading-relaxed">
-                      {plan.contentGuidelines}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
-                  <Compass className="size-12 text-zinc-600 mb-4 stroke-1 animate-pulse" />
-                  <h3 className="text-lg font-bold text-zinc-300 mb-1">
-                    Director Plan Required
-                  </h3>
-                  <p className="text-sm text-zinc-500 max-w-sm">
-                    Generate the director plan first to lay the foundation of
-                    the storytelling guidelines.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <DirectorStep
+            projectSlug={project.slug}
+            plan={plan}
+            loading={loading}
+            error={error}
+            setError={setError}
+            onGenerateDirectorPlan={handleGenerateDirectorPlan}
+          />
         )}
 
         {activeStep === "story" && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-6 md:col-span-1">
-              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <FileText className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">Story Writer</h3>
-                </div>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  The Story AI reads the Director Plan constraints and writes a
-                  structured storyline complete with attention hook, character
-                  definitions, premise, summary, and funny punchlines.
-                </p>
-                {!story ? (
-                  <Button
-                    onClick={handleGenerateStory}
-                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
-                    disabled={loading.story}
-                  >
-                    {loading.story ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Writing Script...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4" />
-                        Generate Story
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleGenerateStory}
-                    variant="outline"
-                    className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-5"
-                    disabled={loading.story}
-                  >
-                    {loading.story ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Rewriting Story...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4 text-[#A78BFA]" />
-                        Rewrite Story
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              {story ? (
-                <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-6">
-                  <div>
-                    <span className="text-xs uppercase tracking-widest text-[#A78BFA] font-bold">
-                      Script Title
-                    </span>
-                    <h3 className="text-2xl font-black text-white mt-1">
-                      {story.title}
-                    </h3>
-                  </div>
-
-                  <div className="space-y-1.5 p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
-                    <p className="text-xs uppercase tracking-wider text-amber-400 font-bold flex items-center gap-1.5">
-                      <Sparkles className="size-3.5" /> Core Comedy Hook (0-3s)
-                    </p>
-                    <p className="text-base font-medium text-white italic leading-relaxed">
-                      "{story.hook}"
-                    </p>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                        Premise
-                      </p>
-                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">
-                        {story.premise}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                        Story Summary
-                      </p>
-                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">
-                        {story.summary}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
-                        Key Comedic Twist / Payoff
-                      </p>
-                      <p className="text-sm text-zinc-300 leading-relaxed mt-1">
-                        {story.ending}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
-                      Character Cast
-                    </h4>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {story.characters.map((char, idx) => (
-                        <div
-                          key={idx}
-                          className="p-4 rounded-xl bg-[#18181B] border border-[#27272A] space-y-2"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white text-sm">
-                              {char.name}
-                            </span>
-                            <span className="inline-flex items-center rounded-md bg-zinc-800 px-2 py-1 text-xs font-semibold text-zinc-400">
-                              {char.role}
-                            </span>
-                          </div>
-                          <p className="text-xs text-zinc-400 leading-relaxed">
-                            {char.personality}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
-                      Acts Flow
-                    </h4>
-                    <div className="space-y-3">
-                      {story.acts.map((act, idx) => (
-                        <div
-                          key={idx}
-                          className="flex gap-4 p-4 rounded-xl bg-[#18181B]/40 border border-[#27272A]/50"
-                        >
-                          <div className="flex size-7 items-center justify-center rounded-full bg-[#27272A] text-xs font-bold text-zinc-300">
-                            {idx + 1}
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-sm font-bold text-white">
-                              {act.name}
-                            </span>
-                            <p className="text-xs text-zinc-400 leading-relaxed">
-                              {act.description}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
-                  <FileText className="size-12 text-zinc-600 mb-4 stroke-1" />
-                  <h3 className="text-lg font-bold text-zinc-300 mb-1">
-                    Story Plan Pending
-                  </h3>
-                  <p className="text-sm text-zinc-500 max-w-sm">
-                    Generate the story next to map characters, dialogue cues,
-                    and act structures.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <StoryStep
+            projectSlug={project.slug}
+            story={story}
+            loading={loading}
+            error={error}
+            setError={setError}
+            onGenerateStory={handleGenerateStory}
+          />
         )}
 
         {activeStep === "scenes" && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-6 md:col-span-1">
-              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Film className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">
-                    Scene Planner
-                  </h3>
-                </div>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  The Scene Planner takes the completed story acts and maps them
-                  into filmable visual segments. Each scene is complete with
-                  length, precise visual prompts for AI rendering, dialogue
-                  audio cues, and comedy beats.
-                </p>
-                {!scenes ? (
-                  <Button
-                    onClick={handleGenerateScenes}
-                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
-                    disabled={loading.scenes}
-                  >
-                    {loading.scenes ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Planning Scenes...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4" />
-                        Plan Scenes
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleGenerateScenes}
-                    variant="outline"
-                    className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-5"
-                    disabled={loading.scenes}
-                  >
-                    {loading.scenes ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Re-planning...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4 text-[#A78BFA]" />
-                        Re-plan Scenes
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              {scenes ? (
-                <div className="space-y-4">
-                  {scenes.scenes.map((scene) => (
-                    <div
-                      key={scene.id}
-                      className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#27272A]/50 pb-3">
-                        <div className="flex items-center gap-3">
-                          <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
-                            #{scene.id}
-                          </span>
-                          <h4 className="font-bold text-white text-base">
-                            {scene.title}
-                          </h4>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-zinc-400">
-                          <span className="rounded-md bg-zinc-800/80 px-2 py-1 text-zinc-300">
-                            {scene.act}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="size-3.5 text-zinc-500" />{" "}
-                            {scene.duration}s
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3.5">
-                        <div className="space-y-1">
-                          <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                            Visual Action Description
-                          </span>
-                          <p className="text-sm text-zinc-300 leading-relaxed">
-                            {scene.description}
-                          </p>
-                        </div>
-
-                        {scene.dialogue && (
-                          <div className="space-y-1 p-3 rounded-lg bg-[#18181B] border border-[#27272A]/60 font-serif">
-                            <span className="text-[10px] uppercase tracking-widest text-[#A78BFA] font-bold block mb-1">
-                              Dialogue / Narration
-                            </span>
-                            <p className="text-sm text-white italic leading-relaxed">
-                              {scene.dialogue}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="space-y-1 p-3 rounded-lg bg-[#0a0a0b] border border-[#27272A]/40">
-                          <span className="text-[10px] uppercase tracking-widest text-[#7C3AED] font-bold block mb-1">
-                            AI Video Generation Prompt
-                          </span>
-                          <code className="text-xs text-zinc-400 leading-relaxed block break-words whitespace-pre-wrap select-all selection:bg-[#7C3AED]/30">
-                            {scene.visualPrompt}
-                          </code>
-                        </div>
-
-                        {scene.comedyElement && (
-                          <div className="text-xs text-amber-400 flex items-center gap-1.5 bg-amber-950/10 border border-amber-900/30 rounded-lg px-3 py-2">
-                            <Sparkles className="size-3 text-amber-500 shrink-0" />
-                            <span>Comedy element: {scene.comedyElement}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
-                  <Film className="size-12 text-zinc-600 mb-4 stroke-1 animate-pulse" />
-                  <h3 className="text-lg font-bold text-zinc-300 mb-1">
-                    Scenes Pending
-                  </h3>
-                  <p className="text-sm text-zinc-500 max-w-sm">
-                    Plan scenes to generate exact prompt specifications for
-                    rendering videos.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <ScenesStep
+            projectSlug={project.slug}
+            scenes={scenes}
+            loading={loading}
+            error={error}
+            setError={setError}
+            onGenerateScenes={handleGenerateScenes}
+          />
         )}
 
         {activeStep === "dialogues" && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-6 md:col-span-1">
-              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <BookOpenText className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">
-                    Dialogue Writer
-                  </h3>
-                </div>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  The Dialogue AI writes natural, character-specific dialogue
-                  for every scene. Each character gets a distinct voice,
-                  emotion, and comedic timing.
-                </p>
-                {!dialogues ? (
-                  <Button
-                    onClick={handleGenerateDialogues}
-                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
-                    disabled={loading.dialogues}
-                  >
-                    {loading.dialogues ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Writing Dialogues...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4" />
-                        Generate Dialogues
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleGenerateDialogues}
-                    variant="outline"
-                    className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-5"
-                    disabled={loading.dialogues}
-                  >
-                    {loading.dialogues ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Rewriting Dialogues...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4 text-[#A78BFA]" />
-                        Rewrite Dialogues
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              {dialogues ? (
-                <div className="space-y-6">
-                  {dialogues.scenes.map((sceneD) => {
-                    const sceneInfo = scenes?.scenes.find(
-                      (s) => s.id === sceneD.id,
-                    );
-                    return (
-                      <div
-                        key={sceneD.id}
-                        className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
-                      >
-                        <div className="flex items-center gap-3 border-b border-[#27272A]/50 pb-3">
-                          <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
-                            #{sceneD.id}
-                          </span>
-                          <h4 className="font-bold text-white text-base">
-                            {sceneInfo?.title ?? `Scene ${sceneD.id}`}
-                          </h4>
-                        </div>
-
-                        <div className="space-y-3">
-                          {sceneD.dialogue.map((line, idx) => (
-                            <div
-                              key={idx}
-                              className="flex gap-3 p-3 rounded-xl bg-[#18181B] border border-[#27272A]/60"
-                            >
-                              <div className="flex flex-col items-center gap-1 min-w-[80px]">
-                                <span className="text-xs font-bold text-[#A78BFA] uppercase tracking-wider">
-                                  {line.character}
-                                </span>
-                                <span className="text-[10px] uppercase tracking-wider text-zinc-500">
-                                  {line.emotion}
-                                </span>
-                                {line.timing && (
-                                  <span className="text-[10px] text-zinc-600 italic">
-                                    {line.timing}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex-1 border-l border-[#27272A] pl-3">
-                                <p className="text-sm text-white leading-relaxed">
-                                  {line.text}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center h-full min-h-[300px]">
-                  <BookOpenText className="size-12 text-zinc-600 mb-4 stroke-1 animate-pulse" />
-                  <h3 className="text-lg font-bold text-zinc-300 mb-1">
-                    Dialogues Pending
-                  </h3>
-                  <p className="text-sm text-zinc-500 max-w-sm">
-                    Generate scenes first, then write character dialogue for
-                    each scene.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <DialoguesStep
+            projectSlug={project.slug}
+            dialogues={dialogues}
+            scenes={scenes}
+            loading={loading}
+            error={error}
+            setError={setError}
+            onGenerateDialogues={handleGenerateDialogues}
+          />
         )}
 
         {activeStep === "prompts" && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-6 md:col-span-1">
-              <div className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-6">
-                <div className="flex items-center gap-3">
-                  <Sparkles className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">
-                    Prompt Builder
-                  </h3>
-                </div>
-                <p className="text-sm leading-relaxed text-zinc-400">
-                  Finalize each scene into a render-ready prompt with camera,
-                  lighting, mood, and visual exclusions.
-                </p>
-                <Button
-                  onClick={handleGeneratePrompts}
-                  className={
-                    prompts
-                      ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
-                      : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
-                  }
-                  disabled={loading.prompts}
-                  variant={prompts ? "outline" : "default"}
-                >
-                  {loading.prompts ? (
-                    <>
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                      Building Prompts...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 size-4" />
-                      {prompts ? "Regenerate Prompts" : "Build Render Prompts"}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              {prompts ? (
-                <div className="space-y-4">
-                  {prompts.scenes.map((scene) => (
-                    <article
-                      key={scene.id}
-                      className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5"
-                    >
-                      <div className="flex items-center gap-3 border-b border-[#27272A]/50 pb-3">
-                        <span className="flex size-7 items-center justify-center rounded-lg border border-[#7C3AED]/20 bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA]">
-                          #{scene.id}
-                        </span>
-                        <h4 className="font-bold text-white">
-                          {scenes?.scenes.find((item) => item.id === scene.id)
-                            ?.title ?? `Scene ${scene.id}`}
-                        </h4>
-                      </div>
-                      <PromptField label="Render Prompt" value={scene.prompt} />
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <PromptField label="Camera" value={scene.camera} />
-                        <PromptField label="Lighting" value={scene.lighting} />
-                        <PromptField label="Mood" value={scene.mood} />
-                        <PromptField
-                          label="Avoid"
-                          value={scene.negativePrompt}
-                        />
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
-                  <Sparkles className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
-                  <h3 className="mb-1 text-lg font-bold text-zinc-300">
-                    Render Prompts Pending
-                  </h3>
-                  <p className="max-w-sm text-sm text-zinc-500">
-                    Generate dialogue first, then finalize the visual direction
-                    for every scene.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <PromptsStep
+            projectSlug={project.slug}
+            prompts={prompts}
+            scenes={scenes}
+            loading={loading}
+            error={error}
+            setError={setError}
+            onGeneratePrompts={handleGeneratePrompts}
+          />
         )}
 
         {activeStep === "images" && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-6 md:col-span-1">
-              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Sparkles className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">
-                    AI Image Generator
-                  </h3>
-                </div>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  Generate AI images for each scene using the approved render
-                  prompts. In Phase 1, mock images are generated automatically
-                  when no API key is available. Each image is stored as an Asset
-                  in MongoDB.
-                </p>
-                {!imageResults ? (
-                  <Button
-                    onClick={handleGenerateImages}
-                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
-                    disabled={loading.images}
-                  >
-                    {loading.images ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Generating Images...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4" />
-                        Generate AI Images
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleGenerateImages}
-                    variant="outline"
-                    className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-5"
-                    disabled={loading.images}
-                  >
-                    {loading.images ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Regenerating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 size-4 text-[#A78BFA]" />
-                        Regenerate All Images
-                      </>
-                    )}
-                  </Button>
-                )}
-                <Button
-                  onClick={handleRefreshPipeline}
-                  variant="outline"
-                  className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-3"
-                >
-                  <Activity className="mr-2 size-4" />
-                  Refresh Status
-                </Button>
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              {imageResults ? (
-                <div className="space-y-4">
-                  {imageResults.map((result) => {
-                    const scene = scenes?.scenes.find(
-                      (s) => String(s.id) === result.sceneId,
-                    );
-                    const prompt = prompts?.scenes.find(
-                      (p) => p.id === Number(result.sceneId),
-                    );
-                    const asset = assets?.find(
-                      (a) => a.sceneId === result.sceneId && a.type === "IMAGE",
-                    );
-                    return (
-                      <div
-                        key={result.sceneId}
-                        className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
-                      >
-                        <div className="flex items-center justify-between border-b border-[#27272A]/50 pb-3">
-                          <div className="flex items-center gap-3">
-                            <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
-                              #{result.sceneId}
-                            </span>
-                            <h4 className="font-bold text-white text-base">
-                              {scene?.title ?? `Scene ${result.sceneId}`}
-                            </h4>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs text-zinc-400">
-                              Provider:{" "}
-                              <span className="text-zinc-200 font-semibold">
-                                {result.provider}
-                              </span>
-                            </span>
-                            <span
-                              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                                asset?.status === "ready"
-                                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                                  : asset?.status === "failed"
-                                    ? "border-rose-500/20 bg-rose-500/10 text-rose-400"
-                                    : "border-amber-500/20 bg-amber-500/10 text-amber-400"
-                              }`}
-                            >
-                              {asset?.status ?? "pending"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-4 sm:grid-cols-3">
-                          <div className="sm:col-span-1">
-                            {result.imageUrl ? (
-                              <img
-                                src={result.imageUrl}
-                                alt={`Scene ${result.sceneId}`}
-                                className="w-full rounded-xl border border-[#27272A] object-cover aspect-square"
-                              />
-                            ) : (
-                              <div className="flex aspect-square items-center justify-center rounded-xl border-2 border-dashed border-[#27272A] bg-[#18181B]">
-                                <Sparkles className="size-8 text-zinc-600" />
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="sm:col-span-2 space-y-3">
-                            <div>
-                              <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                Prompt
-                              </span>
-                              <p className="text-sm text-zinc-300 leading-relaxed mt-1">
-                                {prompt?.prompt ??
-                                  scene?.visualPrompt ??
-                                  "No prompt available"}
-                              </p>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                              <div>
-                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                  Model
-                                </span>
-                                <p className="text-zinc-300">{result.model}</p>
-                              </div>
-                              <div>
-                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                  Seed
-                                </span>
-                                <p className="text-zinc-300">
-                                  {result.seed ?? "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                  Resolution
-                                </span>
-                                <p className="text-zinc-300">
-                                  {result.width}×{result.height}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                  Generation Time
-                                </span>
-                                <p className="text-zinc-300">
-                                  {result.generationTime}ms
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex gap-2 pt-2">
-                              <Button
-                                onClick={() =>
-                                  handleRegenerateImage(result.sceneId)
-                                }
-                                variant="outline"
-                                size="sm"
-                                className="border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f]"
-                                disabled={loading.images}
-                              >
-                                <RefreshCw className="mr-1 size-3" />
-                                Regenerate
-                              </Button>
-                              {asset?.path ? (
-                                <a
-                                  href={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${project.slug}/assets`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center justify-center rounded-lg border border-[#27272A] bg-[#18181B] px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-[#27272A]"
-                                >
-                                  <Download className="mr-1 size-3" />
-                                  Download
-                                </a>
-                              ) : null}
-                              <Button
-                                onClick={() =>
-                                  handleRenderScene(result.sceneId)
-                                }
-                                variant="outline"
-                                size="sm"
-                                className="border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f]"
-                                disabled={loading.render}
-                              >
-                                <Play className="mr-1 size-3" />
-                                Render Scene
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
-                  <Sparkles className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
-                  <h3 className="mb-1 text-lg font-bold text-zinc-300">
-                    AI Images Pending
-                  </h3>
-                  <p className="max-w-sm text-sm text-zinc-500">
-                    Generate render prompts first, then create AI images for
-                    each scene.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <ImagesStep
+            projectSlug={project.slug}
+            imageResults={imageResults}
+            scenes={scenes}
+            prompts={prompts}
+            assets={assets}
+            loading={loading}
+            error={error}
+            setError={setError}
+            onGenerateImages={handleGenerateImages}
+            onRegenerateImage={handleRegenerateImage}
+            onRefreshPipeline={handleRefreshPipeline}
+            onRenderScene={handleRenderScene}
+          />
         )}
 
         {activeStep === "render" && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-6 md:col-span-1">
-              <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Film className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">
-                    Scene Renderer
-                  </h3>
-                </div>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  Render AI images into video clips using FFmpeg with camera
-                  movements (zoom, pan, fade). Each scene video is stored as an
-                  Asset. Later, these will be replaced by AI-generated videos.
-                </p>
-                <Button
-                  onClick={handleRenderProject}
-                  className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
-                  disabled={loading.render || !imageResults}
-                >
-                  {loading.render ? (
-                    <>
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                      Rendering All...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="mr-2 size-4" />
-                      Render All Scenes
-                    </>
-                  )}
-                </Button>
-                <Button
-                  onClick={handleRefreshPipeline}
-                  variant="outline"
-                  className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-3"
-                >
-                  <Activity className="mr-2 size-4" />
-                  Refresh Pipeline
-                </Button>
-
-                {pipelineStatus ? (
-                  <div className="space-y-2 pt-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      Pipeline Status
-                    </h4>
-                    {pipelineStatus.stages.map((stage) => (
-                      <div
-                        key={stage.stage}
-                        className="flex items-center justify-between text-xs"
-                      >
-                        <span className="text-zinc-400">{stage.stage}</span>
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                            stage.status === "completed"
-                              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                              : stage.status === "failed"
-                                ? "border-rose-500/20 bg-rose-500/10 text-rose-400"
-                                : stage.status === "running"
-                                  ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
-                                  : "border-amber-500/20 bg-amber-500/10 text-amber-400"
-                          }`}
-                        >
-                          {stage.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              {renderResults ? (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
-                    {renderResults.length} scene videos rendered · Resolution:
-                    1080×1920 · 30 FPS
-                  </div>
-                  {renderResults.map((result) => {
-                    const scene = scenes?.scenes.find(
-                      (s) => String(s.id) === result.sceneId,
-                    );
-                    const videoAsset = assets?.find(
-                      (a) => a.sceneId === result.sceneId && a.type === "VIDEO",
-                    );
-                    return (
-                      <div
-                        key={result.sceneId}
-                        className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
-                      >
-                        <div className="flex items-center justify-between border-b border-[#27272A]/50 pb-3">
-                          <div className="flex items-center gap-3">
-                            <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
-                              #{result.sceneId}
-                            </span>
-                            <h4 className="font-bold text-white text-base">
-                              {scene?.title ?? `Scene ${result.sceneId}`}
-                            </h4>
-                          </div>
-                          <span
-                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                              videoAsset?.status === "ready"
-                                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                                : "border-amber-500/20 bg-amber-500/10 text-amber-400"
-                            }`}
-                          >
-                            {videoAsset?.status ?? "pending"}
-                          </span>
-                        </div>
-
-                        <div className="grid gap-4 sm:grid-cols-3">
-                          <div className="sm:col-span-1">
-                            <video
-                              src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${project.slug}/assets`}
-                              className="w-full rounded-xl border border-[#27272A] object-cover aspect-video bg-[#18181B]"
-                              controls
-                            />
-                          </div>
-
-                          <div className="sm:col-span-2 space-y-3">
-                            <div>
-                              <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                Rendered Video
-                              </span>
-                              <p className="text-sm text-zinc-300 leading-relaxed mt-1">
-                                {result.videoPath}
-                              </p>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                              <div>
-                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                  Duration
-                                </span>
-                                <p className="text-zinc-300">
-                                  {result.duration}s
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                  Resolution
-                                </span>
-                                <p className="text-zinc-300">
-                                  {result.width}×{result.height}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                  FPS
-                                </span>
-                                <p className="text-zinc-300">{result.fps}</p>
-                              </div>
-                              <div>
-                                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                  Provider
-                                </span>
-                                <p className="text-zinc-300">
-                                  {videoAsset?.provider ?? "ffmpeg"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex gap-2 pt-2">
-                              <Button
-                                onClick={() =>
-                                  handleRenderScene(result.sceneId)
-                                }
-                                variant="outline"
-                                size="sm"
-                                className="border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f]"
-                                disabled={loading.render}
-                              >
-                                <RefreshCw className="mr-1 size-3" />
-                                Re-render
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
-                  <Film className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
-                  <h3 className="mb-1 text-lg font-bold text-zinc-300">
-                    Scene Rendering Pending
-                  </h3>
-                  <p className="max-w-sm text-sm text-zinc-500">
-                    Generate AI images first, then render them into video clips
-                    with FFmpeg.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <RenderStep
+            projectSlug={project.slug}
+            renderResults={renderResults}
+            scenes={scenes}
+            assets={assets}
+            pipelineStatus={pipelineStatus}
+            imageResults={imageResults}
+            loading={loading}
+            error={error}
+            setError={setError}
+            onRenderProject={handleRenderProject}
+            onRefreshPipeline={handleRefreshPipeline}
+            onRenderScene={handleRenderScene}
+          />
         )}
 
         {activeStep === "video" && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-6 md:col-span-1">
-              <div className="space-y-4 rounded-2xl border border-[#27272A] bg-[#111111] p-6">
-                <div className="flex items-center gap-3">
-                  <Film className="size-5 text-[#A78BFA]" />
-                  <h3 className="text-lg font-bold text-white">
-                    Video Render Plan
-                  </h3>
-                </div>
-                <p className="text-sm leading-relaxed text-zinc-400">
-                  Create independently renderable scene jobs from the approved
-                  prompts. A video provider will execute these jobs in the next
-                  milestone.
-                </p>
-                <Button
-                  onClick={handlePrepareVideo}
-                  className={
-                    videoPlan
-                      ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
-                      : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
-                  }
-                  disabled={loading.render}
-                  variant={videoPlan ? "outline" : "default"}
-                >
-                  {loading.render ? (
-                    <>
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                      Preparing Jobs...
-                    </>
-                  ) : (
-                    <>
-                      <Film className="mr-2 size-4" />
-                      {videoPlan ? "Rebuild Render Plan" : "Prepare Video Jobs"}
-                    </>
-                  )}
-                </Button>
-                {videoPlan ? (
-                  <Button
-                    onClick={handleRenderVideo}
-                    className="w-full bg-emerald-600 py-5 font-semibold text-white hover:bg-emerald-500"
-                    disabled={
-                      loading.render || videoPlan.renderStatus === "completed"
-                    }
-                  >
-                    {loading.render ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Rendering Video...
-                      </>
-                    ) : videoPlan.renderStatus === "completed" ? (
-                      "Video Rendered"
-                    ) : (
-                      <>
-                        <Film className="mr-2 size-4" />
-                        Render Local MP4
-                      </>
-                    )}
-                  </Button>
-                ) : null}
-                <Button
-                  onClick={handleGenerateSubtitles}
-                  className="w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
-                  disabled={loading.render || Boolean(subtitles)}
-                  variant="outline"
-                >
-                  {subtitles ? "Subtitles Generated" : "Generate Subtitles"}
-                </Button>
-                {videoPlan?.renderStatus === "completed" && subtitles ? (
-                  <Button
-                    onClick={handleExportVideo}
-                    className="w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
-                    disabled={loading.render || Boolean(exportPath)}
-                  >
-                    {exportPath
-                      ? "Captioned Export Created"
-                      : "Export Captioned MP4"}
-                  </Button>
-                ) : null}
-                {exportPath ? (
-                  <a
-                    href={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${project.slug}/export/download`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-[#27272A] bg-[#18181B] px-4 py-5 text-sm font-semibold text-zinc-200 hover:bg-[#27272A]"
-                  >
-                    Download Final MP4
-                  </a>
-                ) : null}
-              </div>
-            </div>
-            <div className="md:col-span-2">
-              {videoPlan ? (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
-                    {videoPlan.resolution} · {videoPlan.frameRate} FPS ·{" "}
-                    {videoPlan.renderStatus === "completed"
-                      ? `Rendered: ${videoPlan.finalPath}`
-                      : `${videoPlan.scenes.length} scene jobs pending render`}
-                  </div>
-                  {subtitles ? (
-                    <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
-                      Captions: {subtitles.cues.length} cues ·{" "}
-                      {subtitles.srtPath}
-                    </div>
-                  ) : null}
-                  {exportPath ? (
-                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-                      Final export: {exportPath}
-                    </div>
-                  ) : null}
-                  {videoPlan.scenes.map((scene) => (
-                    <article
-                      key={scene.id}
-                      className="flex items-center justify-between gap-4 rounded-2xl border border-[#27272A] bg-[#111111] p-5"
-                    >
-                      <div>
-                        <p className="font-bold text-white">Scene {scene.id}</p>
-                        <p className="mt-1 text-xs text-zinc-500">
-                          {scene.duration}s · {scene.camera} · {scene.lighting}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400">
-                        {scene.status}
-                      </span>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
-                  <Film className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
-                  <h3 className="mb-1 text-lg font-bold text-zinc-300">
-                    Video Jobs Pending
-                  </h3>
-                  <p className="max-w-sm text-sm text-zinc-500">
-                    Approve render prompts to prepare scene jobs for a future
-                    video provider.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <VideoStep
+            projectSlug={project.slug}
+            videoPlan={videoPlan}
+            subtitles={subtitles}
+            exportPath={exportPath}
+            loading={loading}
+            error={error}
+            setError={setError}
+            onPrepareVideo={handlePrepareVideo}
+            onRenderVideo={handleRenderVideo}
+            onGenerateSubtitles={handleGenerateSubtitles}
+            onExportVideo={handleExportVideo}
+          />
         )}
       </div>
     </div>
