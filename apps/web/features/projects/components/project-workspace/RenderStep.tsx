@@ -170,11 +170,17 @@ function RenderResultsView({
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="sm:col-span-1">
-                <video
-                  src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${projectSlug}/assets`}
-                  className="w-full rounded-xl border border-[#27272A] object-cover aspect-video bg-[#18181B]"
-                  controls
-                />
+                {videoAsset && videoAsset.status === "ready" ? (
+                  <video
+                    src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${projectSlug}/assets/${videoAsset._id}/file`}
+                    className="w-full rounded-xl border border-[#27272A] object-cover aspect-video bg-[#18181B]"
+                    controls
+                  />
+                ) : (
+                  <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-[#27272A] bg-[#18181B] text-xs text-zinc-500">
+                    No video
+                  </div>
+                )}
               </div>
 
               <div className="sm:col-span-2 space-y-3">

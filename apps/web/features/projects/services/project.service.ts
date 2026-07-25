@@ -147,6 +147,7 @@ export interface ImageGenerationResult {
 }
 
 export interface Asset {
+  _id: string;
   sceneId: string;
   type: "IMAGE" | "VIDEO" | "AUDIO" | "SUBTITLE" | "EXPORT";
   filename: string;
@@ -160,6 +161,7 @@ export interface Asset {
   generationTime?: number;
   seed?: number;
   status: "pending" | "generating" | "ready" | "failed" | "cancelled";
+  metadata?: Record<string, unknown>;
 }
 
 export interface SceneRenderResult {

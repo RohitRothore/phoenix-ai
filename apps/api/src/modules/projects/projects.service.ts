@@ -953,6 +953,29 @@ export class ProjectsService {
     };
   }
 
+  async serveAssetFile(slug: string, assetId: string) {
+    const project = await this.loadProject(slug);
+    const asset = await this.assetService.findById(assetId);
+    if (!asset || asset.projectId !== project.id) {
+      throw new NotFoundException(`Asset "${assetId}" not found.`);
+    }
+    const buffer = await this.storage.readBinary(asset.path!);
+    const ext = asset.filename?.split('.').pop()?.toLowerCase() ?? 'bin';
+    const mimeMap: Record<string, string> = {
+      mp4: 'video/mp4',
+      webm: 'video/webm',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      srt: 'text/plain',
+    };
+    return {
+      buffer,
+      filename: asset.filename ?? `asset-${assetId}.${ext}`,
+      contentType: mimeMap[ext] ?? 'application/octet-stream',
+    };
+  }
+
   // ─── Scene Rendering ──────────────────────────────────────────────────────
 
   async renderScene(slug: string, sceneId: string) {

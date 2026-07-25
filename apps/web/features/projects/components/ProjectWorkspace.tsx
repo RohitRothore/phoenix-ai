@@ -87,7 +87,10 @@ export type Step =
   | "video";
 
 // Re-export for convenience if needed elsewhere
-export type { DirectorStepProps, StoryStepProps } from "@/features/projects/components/project-workspace/step-types";
+export type {
+  DirectorStepProps,
+  StoryStepProps,
+} from "@/features/projects/components/project-workspace/step-types";
 
 export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
   const [activeStep, setActiveStep] = useState<Step>("director");
@@ -155,7 +158,24 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
           setSubtitles(subtitlesRes.data);
 
         const assetsRes = await getAssets(project.slug);
-        if (assetsRes.data) setAssets(assetsRes.data);
+        if (assetsRes.data) {
+          setAssets(assetsRes.data);
+          const videoAssets = assetsRes.data.filter(
+            (a) => a.type === "VIDEO" && a.status === "ready",
+          );
+          if (videoAssets.length > 0 && !renderResults) {
+            setRenderResults(
+              videoAssets.map((a) => ({
+                sceneId: a.sceneId,
+                videoPath: a.path,
+                duration: a.duration ?? 0,
+                width: a.width ?? 1080,
+                height: a.height ?? 1920,
+                fps: (a.metadata?.frameRate as number) ?? 30,
+              })),
+            );
+          }
+        }
 
         const imagesRes = await getImages(project.slug);
         if (imagesRes.data && imagesRes.data.length > 0)

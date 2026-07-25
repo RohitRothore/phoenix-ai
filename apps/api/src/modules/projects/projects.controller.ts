@@ -148,6 +148,20 @@ export class ProjectsController {
     return this.projectsService.getAssets(slug, type);
   }
 
+  @Get(':slug/assets/:assetId/file')
+  async serveAssetFile(
+    @Param('slug') slug: string,
+    @Param('assetId') assetId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename, contentType } =
+      await this.projectsService.serveAssetFile(slug, assetId);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    return res.end(buffer);
+  }
+
   // ─── Scene Rendering Endpoints ───────────────────────────────────────────
 
   @Post(':slug/render')
