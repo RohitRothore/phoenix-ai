@@ -132,8 +132,20 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
           setPrompts(promptsRes.data);
 
         const subtitlesRes = await getSubtitles(project.slug);
-        if (subtitlesRes.data && subtitlesRes.data.status === "ready")
+        if (subtitlesRes.data && subtitlesRes.data.status === "ready") {
           setSubtitles(subtitlesRes.data);
+          if (subtitlesRes.data.finalPath && subtitlesRes.data.composedAt) {
+            const totalDuration = scenesRes.data?.scenes?.reduce(
+              (sum, s) => sum + (s.duration ?? 0),
+              0,
+            ) ?? 0;
+            setCompositionResult({
+              finalPath: subtitlesRes.data.finalPath,
+              duration: totalDuration,
+              exportedAt: subtitlesRes.data.composedAt,
+            });
+          }
+        }
 
         const voiceRes = await getVoice(project.slug);
         if (voiceRes.data && voiceRes.data.lines?.length > 0)

@@ -106,6 +106,8 @@ export interface Subtitles {
   srtContent?: string;
   status: string;
   generatedAt: string;
+  finalPath?: string;
+  composedAt?: string;
 }
 
 // ─── Image Generation Types ───────────────────────────────────────────────────
