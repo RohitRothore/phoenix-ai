@@ -40,7 +40,10 @@ import { LocalStorageService } from '../../common/storage/local-storage.service'
 import { AssetService } from '../assets/asset.service';
 import { PipelineStateService } from '../pipeline/pipeline-state.service';
 import { GenerationQueueService } from '../pipeline/generation-queue.service';
-import { ImageGenerationService } from '../pipeline/image-generation.service';
+import {
+  ImageGenerationService,
+  ImageGenerationResult,
+} from '../pipeline/image-generation.service';
 import { PromptEnhancerService } from '../pipeline/prompt-enhancer.service';
 import { SceneRendererService } from '../pipeline/scene-renderer.service';
 import { ProjectAssemblerService } from '../pipeline/project-assembler.service';
@@ -910,6 +913,30 @@ export class ProjectsService {
       success: true,
       message: `Image regenerated for scene ${sceneId}.`,
       data: result,
+    };
+  }
+
+  async getImages(slug: string) {
+    const project = await this.loadProject(slug);
+    const assets = await this.assetService.listByProject(project.id!, 'IMAGE');
+
+    const results: ImageGenerationResult[] = assets.map((asset) => ({
+      sceneId: asset.sceneId ?? '',
+      assetId: asset._id?.toString() ?? '',
+      imageUrl: asset.url ?? '',
+      imagePath: asset.path ?? '',
+      provider: asset.provider ?? 'mock-image',
+      model: asset.model ?? 'mock',
+      generationTime: asset.generationTime ?? 0,
+      width: asset.width ?? 0,
+      height: asset.height ?? 0,
+      seed: asset.seed,
+    }));
+
+    return {
+      success: true,
+      message: `Retrieved ${results.length} image results.`,
+      data: results,
     };
   }
 

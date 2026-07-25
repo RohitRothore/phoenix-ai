@@ -340,6 +340,10 @@ export async function generateImages(slug: string) {
   });
 }
 
+export async function getImages(slug: string) {
+  return request<ImageGenerationResult[]>(`/projects/${slug}/images`);
+}
+
 export async function regenerateImage(slug: string, sceneId: string) {
   return request<ImageGenerationResult>(
     `/projects/${slug}/images/${sceneId}/regenerate`,

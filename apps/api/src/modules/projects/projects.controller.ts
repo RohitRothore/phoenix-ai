@@ -138,6 +138,11 @@ export class ProjectsController {
     return this.projectsService.regenerateImage(slug, sceneId);
   }
 
+  @Get(':slug/images')
+  getImages(@Param('slug') slug: string) {
+    return this.projectsService.getImages(slug);
+  }
+
   @Get(':slug/assets')
   getAssets(@Param('slug') slug: string, @Query('type') type?: string) {
     return this.projectsService.getAssets(slug, type);

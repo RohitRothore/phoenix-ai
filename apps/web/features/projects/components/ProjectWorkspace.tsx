@@ -41,6 +41,7 @@ import {
   getPrompts,
   getVideoPlan,
   generateImages,
+  getImages,
   regenerateImage,
   getAssets,
   renderScene,
@@ -155,6 +156,10 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
 
         const assetsRes = await getAssets(project.slug);
         if (assetsRes.data) setAssets(assetsRes.data);
+
+        const imagesRes = await getImages(project.slug);
+        if (imagesRes.data && imagesRes.data.length > 0)
+          setImageResults(imagesRes.data);
 
         const pipelineRes = await getPipelineStatus(project.slug);
         if (pipelineRes.data) setPipelineStatus(pipelineRes.data);
