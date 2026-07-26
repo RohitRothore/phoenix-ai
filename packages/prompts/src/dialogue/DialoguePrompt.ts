@@ -33,58 +33,78 @@ export interface DialoguePromptInput {
 }
 
 export class DialoguePrompt {
-  readonly systemPrompt = `You are a professional comedy dialogue writer for an AI-powered Hindi comedy video studio.
+  readonly systemPrompt = `You are India's best comedy dialogue writer for SHORT-FORM VERTICAL VIDEO.
 
-Your job is to write natural, funny, character-appropriate dialogue for each scene.
+You write dialogue that SOUNDS like real Indian people talking, not scripted lines.
+Your dialogue has these qualities:
+- HINGLISH naturally mixed (Hindi + English as Indians actually speak)
+- PUNCHY — max 6-10 words per line for short-form pacing
+- CHARACTER-SPECIFIC — each character has a distinct way of speaking
+- REACTION HEAVY — short exclamations, double-takes, exaggerated responses
+- CULTURALLY GROUNDED — references to Indian daily life, brands, habits
+- MEMORABLE PHRASES — lines people will quote and share
+
+COMEDY DIALOGUE TECHNIQUES:
+- Misunderstanding comedy: character takes something literally
+- Deadpan delivery: serious tone for absurd situations
+- Overreaction: disproportionate response to small things
+- Callback: reference something from earlier in a new context
+- Wordplay: Hindi/English puns, double meanings
+- The "Arey!" moment: sudden realization or shock
+
+VOICE DIRECTION:
+- Protagonist: speaks fastest, most energetic
+- Antagonist/straight man: slower, more deliberate, often confused
+- Supporting: adds chaos, interrupts, reacts
+- Each character's dialogue must be distinguishable by VOICE ALONE
 
 CRITICAL RULES:
 - Respond with ONLY valid JSON. No markdown, no prose, no code blocks.
-- The JSON must exactly match the schema provided.
-- Write all dialogue in the specified language (Hindi/Hinglish unless told otherwise).
-- Each character must speak in a distinct voice that matches their personality.
-- Dialogue must be concise and punchy — short-form video pacing.
-- Comedy should arise from character interactions, misunderstandings, and timing.`;
+- All dialogue in ${'{LANGUAGE}'} (Hinglish encouraged).
+- Each character must speak in a DISTINCT voice pattern.
+- Dialogue must fit the scene duration — don't write more words than can be spoken.
+- Emotions must be SPECIFIC (not just "happy" — use "excited", "smug", "panicked", "deadpan").
+- Timing must indicate WHERE in the scene the line lands (opening, reaction, punchline, exit).`;
 
   build(input: DialoguePromptInput): string {
     const { project, directorPlan, story, scenes } = input;
 
     const charactersText = story.characters
-      .map((c) => `  - ${c.name} (${c.role}): ${c.personality}`)
+      .map(
+        (c) =>
+          `- ${c.name} (${c.role}): ${c.personality} — SPEAKING STYLE: describe how this character talks`,
+      )
       .join('\n');
 
     const scenesText = scenes
       .map(
         (s) =>
-          `Scene #${s.id} ("${s.title}"): ${s.description}`,
+          `Scene #${s.id} "${s.title}" (${s.duration}s, ${s.act}):
+  Visual: ${s.description}
+  Comedy: ${s.comedyElement}`,
       )
       .join('\n\n');
 
-    return `Write dialogue for all scenes in this comedy video:
+    return `Write dialogue for this comedy video:
 
-PROJECT
-Topic: ${project.topic}
-Language: ${project.language}
-Platform: ${project.platform}
-Style: ${project.style}
-
-DIRECTOR NOTES
-Genre: ${directorPlan.genre}
-Tone: ${directorPlan.tone}
-Pacing: ${directorPlan.pacing}
-
-STORY
-Title: ${story.title}
-Hook: ${story.hook}
-Premise: ${story.premise}
-Summary: ${story.summary}
-Comedy Beat: ${story.comedyBeat}
-Ending: ${story.ending}
+PROJECT: ${project.topic} | ${project.language} | ${project.style}
+TONE: ${directorPlan.tone} | PACING: ${directorPlan.pacing}
+COMEDY BEAT: ${story.comedyBeat}
 
 CHARACTERS:
 ${charactersText}
 
 SCENES:
 ${scenesText}
+
+DIALOGUE RULES:
+1. Each scene must have 1-4 dialogue lines MAX (short-form pacing)
+2. First line of each scene must be the HOOK or SETUP line
+3. Last line must be the PUNCHLINE or REACTION
+4. Characters should INTERRUPT each other for comedy
+5. Use EXCLAMATIONS: "Arey!", "Arre bhai!", "Yaar!", "Achha?!", "Nahi nahi!"
+6. Add STAGE DIRECTIONS in parentheses if needed: "(whispers)", "(shouting)", "(deadpan)"
+7. Emotions must be vivid: "panicked", "smugly", "confused", "overjoyed", "terrified"
 
 Return ONLY this JSON (no markdown, no code blocks):
 {
@@ -93,10 +113,10 @@ Return ONLY this JSON (no markdown, no code blocks):
       "id": 1,
       "dialogue": [
         {
-          "character": "string (character name)",
-          "text": "string (dialogue line in ${project.language})",
-          "emotion": "string (e.g. excited, angry, confused, sarcastic)",
-          "timing": "string (e.g. opening, reaction, punchline)"
+          "character": "character name",
+          "text": "dialogue line in ${project.language} (keep under 10 words for pacing)",
+          "emotion": "specific emotion (e.g. panicky, smug, confused, deadpan, overjoyed)",
+          "timing": "where in scene: opening / reaction / buildup / punchline / exit"
         }
       ]
     }

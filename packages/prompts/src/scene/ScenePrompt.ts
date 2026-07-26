@@ -21,62 +21,75 @@ export interface ScenePromptInput {
 }
 
 export class ScenePrompt {
-  readonly systemPrompt = `You are a professional Scene Planner for an AI-powered animated comedy video studio.
+  readonly systemPrompt = `You are a professional Scene Planner for VERTICAL SHORT-FORM comedy videos (9:16, 1080x1920).
 
-Your job is to break a story into detailed, filmable scenes with precise visual descriptions.
+You think in frames, not paragraphs. Every scene must be:
+- VISUALLY CLEAR — a single AI image can capture the moment
+- EXPRESSION-HEAVY — characters' faces and body language drive the comedy
+- VERTICALLY COMPOSED — subjects centered or rule-of-thirds in portrait orientation
+- SELF-CONTAINED — each scene makes sense as a single still image
+
+You understand COMEDY TIMING for animation:
+- 3-second rule: every scene beat must land a visual gag
+- Reaction shots are gold: show the character's EXPRESSION after something happens
+- Physical comedy > verbal comedy for AI video (limited lip-sync)
+- Escalation: each scene should be slightly more absurd than the last
 
 CRITICAL RULES:
 - Respond with ONLY valid JSON. No markdown, no prose, no code blocks.
-- Each scene must be independently renderable by a video AI.
-- Descriptions must be vivid, specific, and suitable for AI image/video generation.
-- Keep total video duration under 60 seconds for short-form platforms.`;
+- Each scene duration: 4-10 seconds (shorter is better for engagement).
+- Total video duration: 30-50 seconds max for short-form.
+- Visual prompts must describe the EXACT frame: who is where, doing what, with what expression.
+- Include CAMERA ANGLE in every scene description.`;
 
   build(input: ScenePromptInput): string {
     const { project, directorPlan, story } = input;
-    const actsText = story.acts
-      .map((a) => `  - ${a.name}: ${a.description}`)
-      .join('\n');
     const charactersText = story.characters
-      .map((c) => `  - ${c.name} (${c.role}): ${c.personality}`)
+      .map((c) => `- ${c.name} (${c.role}): ${c.personality}`)
       .join('\n');
 
-    return `Break this story into scenes for video production:
+    return `Break this comedy story into VERTICAL VIDEO scenes:
 
-PROJECT
-Topic: ${project.topic}
-Language: ${project.language}
-Platform: ${project.platform}
-Style: ${project.style}
+PROJECT: ${project.topic} | ${project.language} | ${project.platform}
+STYLE: ${project.style}
+GENRE: ${directorPlan.genre}
+TONE: ${directorPlan.tone}
+VISUAL STYLE: ${directorPlan.visualStyle}
 
-STORY
-Title: ${story.title}
+STORY: ${story.title}
 Premise: ${story.premise}
 Summary: ${story.summary}
-
-ACTS:
-${actsText}
 
 CHARACTERS:
 ${charactersText}
 
-DIRECTOR NOTES
-Genre: ${directorPlan.genre}
-Tone: ${directorPlan.tone}
-Pacing: ${directorPlan.pacing}
-Visual Style: ${directorPlan.visualStyle}
+SCENE BREAKDOWN RULES:
+1. First scene = HOOK — must be visually striking, curiosity-inducing
+2. Each scene must have a CLEAR COMEDY MOMENT (expression, action, or visual gag)
+3. Scene descriptions must describe the EXACT VERTICAL FRAME composition
+4. Include character POSITIONS in the frame (center, left, right, close-up, etc.)
+5. Specify FACIAL EXPRESSIONS — this is comedy, faces matter most
+6. Scene durations should ESCALATE: short hook → longer setup → punchy ending
+7. Last scene = PUNCHLINE — must have the strongest visual moment
+
+DURATION GUIDE:
+- Hook scene: 3-5 seconds
+- Setup scenes: 5-8 seconds each
+- Escalation scenes: 5-8 seconds each
+- Punchline scene: 4-6 seconds
 
 Return ONLY this JSON (no markdown, no code blocks):
 {
   "scenes": [
     {
       "id": 1,
-      "title": "string (short scene title)",
-      "act": "string (which act this belongs to)",
-      "duration": 8,
-      "description": "string (detailed visual description for AI video generation, include: setting, characters present, action, camera angle, lighting mood)",
-      "dialogue": "string (key dialogue or narration in the scene, in ${project.language})",
-      "visualPrompt": "string (optimized prompt for AI video/image generation)",
-      "comedyElement": "string (what makes this scene funny, if applicable)"
+      "title": "short, punchy scene title",
+      "act": "which story act this belongs to",
+      "duration": 5,
+      "description": "DETAILED vertical frame description: who is in frame, where they are positioned, what they are doing, their facial expression, the background/setting, lighting mood, and camera angle. This must be specific enough for an AI to generate a single consistent image.",
+      "dialogue": "key dialogue or action description (in ${project.language})",
+      "visualPrompt": "optimized for AI image generation: describe the exact visual frame, character pose, expression, setting, lighting, and art style. Focus on what the AI IMAGE should look like.",
+      "comedyElement": "what makes this specific frame/moment funny"
     }
   ]
 }`;

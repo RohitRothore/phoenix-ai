@@ -29,17 +29,30 @@ export interface PromptBuilderPromptInput {
 }
 
 export class PromptBuilderPrompt {
-  readonly version = '1.0.0';
+  readonly version = '2.0.0';
 
-  readonly systemPrompt = `You are a cinematic prompt builder for an AI-powered animated comedy video studio.
+  readonly systemPrompt = `You are a CINEMATIC PROMPT ENGINEER for AI-generated short-form comedy videos in VERTICAL format (9:16, 1080x1920).
 
-Your job is to turn approved scenes and dialogue into precise, independently renderable video prompts.
+You create prompts that generate STUNNING, CONSISTENT, PROFESSIONAL-QUALITY images for each scene.
 
-CRITICAL RULES:
-- Respond with ONLY valid JSON. No markdown, prose, or code blocks.
-- Preserve character, setting, and visual-style continuity from the supplied material.
-- Do not invent story events, dialogue, or characters.
-- Keep every prompt appropriate for the requested platform and animation style.`;
+PROMPT QUALITY RULES:
+1. START with the art style (e.g. "2D animated, Pixar-style, anime, chibi, Indian comic book style")
+2. Describe the EXACT FRAME: character positions, expressions, camera angle
+3. Include LIGHTING details: warm/cool, dramatic/soft, time of day
+4. Include MOOD: the emotional atmosphere of the frame
+5. Add QUALITY TAGS: "highly detailed, sharp, vibrant colors, professional illustration"
+6. Specify the ASPECT RATIO implicitly through composition (vertical, portrait)
+7. Include NEGATIVE PROMPT: what to avoid (text, watermarks, blurry, extra limbs)
+
+COMEDY IMAGE RULES:
+- Characters must have EXPRESSION-HEAVY faces (wide eyes, open mouths, raised eyebrows)
+- Physical comedy poses (stumbling, pointing, dramatic gestures)
+- Indian settings and cultural elements (offices, streets, homes, autos)
+- Vibrant, saturated colors that pop on mobile screens
+- Clean backgrounds that don't distract from the characters
+
+PROMPT STRUCTURE:
+"[Art style], [Scene description], [Character details with expression], [Setting/background], [Camera angle], [Lighting], [Mood/atmosphere], [Quality tags]"`;
 
   build(input: PromptBuilderPromptInput): string {
     const dialogueByScene = new Map(
@@ -50,43 +63,48 @@ CRITICAL RULES:
       .map((scene) => {
         const dialogue = (dialogueByScene.get(scene.id) ?? [])
           .map(
-            (line) => `${line.character} (${line.emotion}, ${line.timing}): ${line.text}`,
+            (line) =>
+              `${line.character} [${line.emotion}, ${line.timing}]: "${line.text}"`,
           )
           .join('\n');
 
         return `SCENE ${scene.id}: ${scene.title}
-Duration: ${scene.duration} seconds
+Duration: ${scene.duration}s
 Description: ${scene.description}
-Existing visual direction: ${scene.visualPrompt}
-Comedy element: ${scene.comedyElement}
-Dialogue:\n${dialogue || 'No spoken dialogue.'}`;
+Comedy Element: ${scene.comedyElement}
+Dialogue:\n${dialogue || 'No dialogue — pure visual comedy'}`;
       })
       .join('\n\n');
 
-    return `Create final video-generation prompts for these scenes.
+    return `Create CINEMATIC PRODUCTION PROMPTS for these comedy scenes.
 
-PROJECT
-Language: ${input.project.language}
-Platform: ${input.project.platform}
-Project style: ${input.project.style}
-
-DIRECTOR NOTES
-Tone: ${input.directorPlan.tone}
-Pacing: ${input.directorPlan.pacing}
-Visual style: ${input.directorPlan.visualStyle}
+PROJECT STYLE: ${input.project.style}
+PLATFORM: ${input.project.platform}
+TONE: ${input.directorPlan.tone}
+VISUAL STYLE: ${input.directorPlan.visualStyle}
 
 ${scenes}
+
+FOR EACH SCENE, create a prompt that:
+1. Opens with the ART STYLE (e.g. "2D animated comedy, chibi-style, vibrant colors")
+2. Describes the EXACT VERTICAL FRAME composition
+3. Specifies character POSITIONS and EXPRESSIONS clearly
+4. Includes SETTING and BACKGROUND details
+5. Adds CAMERA ANGLE (close-up, medium, wide, low-angle, bird's-eye)
+6. Specifies LIGHTING (warm office light, dramatic spotlight, natural daylight)
+7. Sets the MOOD (playful, tense, chaotic, wholesome)
+8. Ends with QUALITY TAGS ("highly detailed, sharp, professional, 4K")
 
 Return ONLY this JSON structure:
 {
   "scenes": [
     {
       "id": 1,
-      "prompt": "string: complete production-ready video prompt",
-      "negativePrompt": "string: visual elements to avoid",
-      "camera": "string: camera framing and movement",
-      "lighting": "string: lighting direction",
-      "mood": "string: visual and emotional mood"
+      "prompt": "complete cinematic prompt for AI image generation (start with art style, end with quality tags)",
+      "negativePrompt": "text, watermark, blurry, extra fingers, deformed, low quality, cropped, ugly, duplicate",
+      "camera": "specific camera angle and framing (e.g. 'medium close-up, character centered, slight low angle')",
+      "lighting": "specific lighting setup (e.g. 'warm golden hour light from left, soft shadows')",
+      "mood": "visual and emotional mood (e.g. 'playful chaos, vibrant energy')"
     }
   ]
 }`;

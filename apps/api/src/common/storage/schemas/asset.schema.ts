@@ -79,4 +79,4 @@ export class Asset {
 
 export const AssetSchema = SchemaFactory.createForClass(Asset);
 
-AssetSchema.index({ projectId: 1, sceneId: 1, type: 1 }, { unique: true });
+AssetSchema.index({ projectId: 1, sceneId: 1, type: 1 });

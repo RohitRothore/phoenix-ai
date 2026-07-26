@@ -96,8 +96,8 @@ export class ImageGenerationService {
         const response = await imageProvider.generateImage({
           prompt: scene.prompt.prompt,
           negativePrompt: scene.prompt.negativePrompt,
-          width: 1024,
-          height: 1024,
+          width: 768,
+          height: 1344,
           style: scene.prompt.mood,
         });
 
@@ -281,7 +281,7 @@ export class ImageGenerationService {
         '-f',
         'lavfi',
         '-i',
-        `color=c=7c3aed:s=1024x1024:d=1`,
+        `color=c=7c3aed:s=768x1344:d=1`,
         '-frames:v',
         '1',
         tempPath,

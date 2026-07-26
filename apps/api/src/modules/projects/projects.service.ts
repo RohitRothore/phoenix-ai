@@ -939,6 +939,16 @@ export class ProjectsService {
       );
     }
 
+    const audioAssets = await this.assetService.listByProject(
+      project.id,
+      'AUDIO',
+    );
+    if (audioAssets.length === 0) {
+      this.logger.warn(
+        `No audio assets found for project "${slug}". Video will have no voice.`,
+      );
+    }
+
     this.logger.log(`Composing final video for project: "${slug}"`);
 
     const result = await this.compositionService.compose({

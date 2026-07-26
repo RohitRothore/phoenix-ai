@@ -26,6 +26,7 @@ export interface SceneRenderInput {
     duration: number;
     imagePath: string;
     prompt: RenderPrompt;
+    audioPath?: string;
   }>;
   resolution?: string;
   frameRate?: number;
@@ -104,30 +105,60 @@ export class SceneRendererService {
         const movement = this.determineCameraMovement(scene.prompt);
         const filter = this.buildVideoFilter(movement, width, height);
 
-        await this.ffmpeg.run(
-          [
-            '-y',
-            '-loop',
-            '1',
-            '-i',
-            absImagePath,
-            '-vf',
-            filter,
-            '-c:v',
-            'libx264',
-            '-tune',
-            'stillimage',
-            '-pix_fmt',
-            'yuv420p',
-            '-r',
-            String(fps),
-            '-t',
-            String(scene.duration),
-            '-shortest',
-            tempClipPath,
-          ],
-          `render scene ${scene.id}`,
+        const ffmpegArgs: string[] = ['-y', '-loop', '1', '-i', absImagePath];
+
+        let hasAudio = false;
+        if (scene.audioPath) {
+          try {
+            let audioAbsPath: string;
+            const audioGridfsId = scene.audioPath?.replace('gridfs:', '') ?? '';
+            if (audioGridfsId) {
+              const audioData = await this.gridfs.downloadFile(audioGridfsId);
+              const tempAudioPath = path.join(tempDir, `audio-${scene.id}.wav`);
+              await fs.writeFile(tempAudioPath, audioData);
+              audioAbsPath = tempAudioPath;
+            } else {
+              audioAbsPath = this.storage.getAbsolutePath(scene.audioPath);
+            }
+            ffmpegArgs.push('-i', audioAbsPath);
+            hasAudio = true;
+          } catch (e) {
+            this.logger.warn(
+              `Failed to load audio for scene ${scene.id}: ${(e as Error).message}`,
+            );
+          }
+        }
+
+        ffmpegArgs.push(
+          '-vf',
+          filter,
+          '-c:v',
+          'libx264',
+          '-tune',
+          'stillimage',
+          '-pix_fmt',
+          'yuv420p',
+          '-r',
+          String(fps),
         );
+
+        if (hasAudio) {
+          ffmpegArgs.push(
+            '-c:a',
+            'aac',
+            '-b:a',
+            '128k',
+            '-ac',
+            '1',
+            '-shortest',
+          );
+        } else {
+          ffmpegArgs.push('-an');
+        }
+
+        ffmpegArgs.push('-t', String(scene.duration), tempClipPath);
+
+        await this.ffmpeg.run(ffmpegArgs, `render scene ${scene.id}`);
 
         const clipData = await fs.readFile(tempClipPath);
         const gridfsFilename = `${projectSlug}/renders/scene-${scene.id}.mp4`;

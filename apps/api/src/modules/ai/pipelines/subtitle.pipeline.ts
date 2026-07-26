@@ -26,14 +26,19 @@ export class SubtitlePipeline implements Pipeline<
   SubtitleInput,
   SubtitleOutput
 > {
+  private static readonly MAX_LINE_LENGTH = 40;
+  private static readonly WORDS_PER_LINE = 8;
+  private static readonly MIN_CUE_DURATION = 0.8;
+  private static readonly MAX_CUE_DURATION = 4.0;
+  private static readonly GAP = 0.08;
+  private static readonly OVERLAP_BUFFER = 0.05;
+
   async run(input: SubtitleInput): Promise<SubtitleOutput> {
     const dialogueByScene = new Map(
       input.dialogues.map((scene) => [scene.id, scene.dialogue]),
     );
     let elapsedSeconds = 0;
     const cues: SubtitleCue[] = [];
-    const GAP = 0.1;
-    const MIN_CUE_DURATION = 0.5;
 
     for (const scene of input.scenes) {
       const lines = dialogueByScene.get(scene.id);
@@ -47,38 +52,86 @@ export class SubtitlePipeline implements Pipeline<
         continue;
       }
 
-      const totalWords = lines.reduce(
+      const totalSceneWords = lines.reduce(
         (sum, line) => sum + line.text.split(/\s+/).length,
         0,
       );
-      const gapBudget = GAP * Math.max(0, lines.length - 1);
-      const availableDuration = Math.max(
-        scene.duration - gapBudget,
-        MIN_CUE_DURATION * lines.length,
-      );
 
-      let cursor = elapsedSeconds;
+      let sceneCursor = elapsedSeconds;
       for (const line of lines) {
-        const wordCount = Math.max(1, line.text.split(/\s+/).length);
-        const proportion =
-          totalWords > 0 ? wordCount / totalWords : 1 / lines.length;
-        const cueDuration = Math.max(
-          MIN_CUE_DURATION,
-          availableDuration * proportion,
+        const subLines = this.breakIntoSubLines(line.text);
+
+        const lineWordCount = Math.max(1, line.text.split(/\s+/).length);
+        const lineProportion =
+          totalSceneWords > 0 ? lineWordCount / totalSceneWords : 1 / lines.length;
+        const lineDuration = Math.max(
+          SubtitlePipeline.MIN_CUE_DURATION,
+          scene.duration * lineProportion,
         );
 
-        cues.push({
-          index: cues.length + 1,
-          startTime: formatSrtTimestamp(cursor),
-          endTime: formatSrtTimestamp(cursor + cueDuration),
-          text: `${line.character}: ${line.text}`,
-        });
-        cursor += cueDuration + GAP;
+        const totalSubLineWords = subLines.reduce(
+          (sum, l) => sum + l.split(/\s+/).length,
+          0,
+        );
+
+        for (const subLine of subLines) {
+          const wordCount = Math.max(1, subLine.split(/\s+/).length);
+          const subProportion =
+            totalSubLineWords > 0
+              ? wordCount / totalSubLineWords
+              : 1 / subLines.length;
+          const cueDuration = Math.min(
+            SubtitlePipeline.MAX_CUE_DURATION,
+            Math.max(
+              SubtitlePipeline.MIN_CUE_DURATION,
+              lineDuration * subProportion,
+            ),
+          );
+
+          cues.push({
+            index: cues.length + 1,
+            startTime: formatSrtTimestamp(
+              sceneCursor + SubtitlePipeline.OVERLAP_BUFFER,
+            ),
+            endTime: formatSrtTimestamp(
+              sceneCursor + cueDuration - SubtitlePipeline.OVERLAP_BUFFER,
+            ),
+            text: `${line.character}: ${subLine}`,
+          });
+          sceneCursor += cueDuration + SubtitlePipeline.GAP;
+        }
       }
       elapsedSeconds += scene.duration;
     }
 
     return { cues, generatedAt: new Date().toISOString() };
+  }
+
+  private breakIntoSubLines(text: string): string[] {
+    const words = text.split(/\s+/);
+    const lines: string[] = [];
+    let currentLine = '';
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      if (
+        testLine.length > SubtitlePipeline.MAX_LINE_LENGTH ||
+        (currentLine &&
+          testLine.split(/\s+/).length > SubtitlePipeline.WORDS_PER_LINE)
+      ) {
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    return lines.length > 0 ? lines : [text];
   }
 }
 

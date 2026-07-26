@@ -15,20 +15,30 @@ export interface StoryPromptInput {
 }
 
 export class StoryPrompt {
-  readonly systemPrompt = `You are India's best comedy writer specializing in short-form Hindi comedy videos.
+  readonly systemPrompt = `You are India's #1 short-form comedy writer. You write scripts for viral Hindi comedy reels and YouTube Shorts.
 
-Your job is to write a complete, original story for a comedy video.
+Your stories follow the GOLDEN RULES of short-form comedy:
+1. HOOK IN 3 SECONDS — The first frame must make someone stop scrolling
+2. ESCALATE FAST — Normal → Weird → Absurd in under 40 seconds
+3. EVERY SECOND COUNTS — No filler, no exposition dumps, no slow buildups
+4. VISUAL COMEDY FIRST — Comedy through expressions, actions, situations (not just words)
+5. STRONG CHARACTERS — Each character has ONE defining trait turned up to 11
+6. RELATABLE SCENES — The audience must think "this happened to me"
+7. REWATCHABLE ENDING — Twist, callback, or punchline that makes people watch again
+8. TRENDING FORMAT — Think: "Bhai ne bola kar diya" energy, "expectations vs reality" format, or "POV" format
+
+You write in ${'{LANGUAGE}'} — mixing Hindi and English naturally (Hinglish) is encouraged.
 
 CRITICAL RULES:
 - Respond with ONLY valid JSON. No markdown, no prose, no code blocks.
-- The JSON must exactly match the schema provided.
-- Write all story content in the specified language.
-- Make the comedy specific, grounded, and relatable to the target audience.`;
+- Total video must be under 60 seconds for short-form platforms.
+- Characters must be DESCRIBABLE in a single sentence for AI to draw them consistently.
+- Every act must end with a comedic beat, not just a plot point.`;
 
   build(input: StoryPromptInput): string {
     const { project, directorPlan } = input;
 
-    return `Write a complete story for this comedy video:
+    return `Write a SHORT-FORM COMEDY STORY for a viral video:
 
 TOPIC: ${project.topic}
 LANGUAGE: ${project.language}
@@ -37,30 +47,44 @@ GENRE: ${directorPlan.genre}
 AUDIENCE: ${directorPlan.targetAudience}
 TONE: ${directorPlan.tone}
 PACING: ${directorPlan.pacing}
-STORY STRUCTURE: ${directorPlan.storyStructure.join(' -> ')}
-COMEDY MECHANICS: ${directorPlan.comedyMechanics.join(', ')}
+COMEDY TECHNIQUES: ${directorPlan.comedyMechanics.join(', ')}
 VISUAL STYLE: ${directorPlan.visualStyle}
-GUIDELINES: ${directorPlan.contentGuidelines}
+
+STORY REQUIREMENTS:
+- Title must be catchy and curiosity-inducing (like a YouTube thumbnail text)
+- Hook must be a SINGLE visual moment that grabs attention (not dialogue)
+- Characters must have DISTINCT visual identities (clothes, hair, accessories)
+- Comedy must come from SITUATIONS and MISUNDERSTINGS, not just jokes
+- Ending must be UNPREDICTABLE but SATISFYING
+- Each act should be 8-15 seconds of screen time
 
 Return ONLY this JSON (no markdown, no code blocks):
 {
-  "title": "string (catchy title for the video)",
-  "hook": "string (opening line that grabs attention in first 3 seconds)",
-  "premise": "string (one-sentence premise of the story)",
-  "summary": "string (2-3 sentence story summary)",
+  "title": "catchy title (e.g. 'Office Me Bhoot', 'Auto Wala Bhaiya', 'Wife Ka New Rule')",
+  "hook": "the visual moment in first 3 seconds (e.g. 'A man walks into office dressed as ghost, everyone ignores him')",
+  "premise": "one-line premise in ${project.language}",
+  "summary": "2-3 sentence story summary with clear beginning, middle, and end",
   "acts": [
     {
-      "name": "string (act name, e.g. Setup, Escalation, Punchline)",
-      "description": "string (what happens in this act)"
+      "name": "Setup",
+      "description": "what we see and the normal situation (5-8 seconds)"
+    },
+    {
+      "name": "Escalation",
+      "description": "things start going wrong in a funny way (10-15 seconds)"
+    },
+    {
+      "name": "Punchline",
+      "description": "the peak absurdity + twist ending (5-8 seconds)"
     }
   ],
-  "comedyBeat": "string (the core joke or comedic insight)",
-  "ending": "string (how the story resolves)",
+  "comedyBeat": "the core comedic insight or relatable truth that makes this funny",
+  "ending": "how it resolves — be specific about the final visual moment",
   "characters": [
     {
-      "name": "string",
-      "role": "string (e.g. protagonist, antagonist, supporting)",
-      "personality": "string (brief personality description)"
+      "name": "character name (Hindi, memorable)",
+      "role": "protagonist/antagonist/supporting",
+      "personality": "ONE trait turned up to 11 (e.g. 'overly dramatic office worker who treats every task like a Bollywood climax')"
     }
   ]
 }`;

@@ -17,6 +17,7 @@ export interface CompositionInput {
     duration: number;
   }>;
   srtContent: string;
+  assContent?: string;
 }
 
 export interface CompositionResult {
@@ -285,8 +286,20 @@ export class CompositionService {
         'concatenate scene audio',
       );
 
-      const srtFile = path.join(tempDir, 'subtitles.srt');
-      await fs.writeFile(srtFile, srtContent);
+      const { srtContent, assContent } = input;
+
+      let subtitleFile: string;
+      let subtitleFilter: string;
+
+      if (assContent) {
+        subtitleFile = path.join(tempDir, 'subtitles.ass');
+        await fs.writeFile(subtitleFile, assContent);
+        subtitleFilter = `ass=${subtitleFile}`;
+      } else {
+        subtitleFile = path.join(tempDir, 'subtitles.srt');
+        await fs.writeFile(subtitleFile, srtContent);
+        subtitleFilter = `subtitles=${subtitleFile}:force_style='FontName=DejaVu Sans,FontSize=12,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=4,BackColour=&H80000000,Outline=0,Alignment=2,MarginV=80,MarginL=60,MarginR=60'`;
+      }
 
       const withSubtitles = path.join(tempDir, 'with-subtitles.mp4');
       await this.ffmpeg.run(
@@ -297,15 +310,23 @@ export class CompositionService {
           '-i',
           concatAudio,
           '-vf',
-          `drawbox=x=0:y=ih*0.75:w=iw:h=ih*0.25:color=black@0.6:t=fill,subtitles=${srtFile}:force_style='FontName=DejaVu Sans,FontSize=11,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=4,BackColour=&H80000000,Outline=0,Alignment=2,MarginV=60,MarginL=60,MarginR=60'`,
+          subtitleFilter,
           '-c:v',
           'libx264',
+          '-preset',
+          'slow',
+          '-crf',
+          '18',
           '-c:a',
           'aac',
           '-b:a',
-          '128k',
+          '192k',
+          '-ar',
+          '48000',
           '-pix_fmt',
           'yuv420p',
+          '-movflags',
+          '+faststart',
           '-shortest',
           withSubtitles,
         ],
