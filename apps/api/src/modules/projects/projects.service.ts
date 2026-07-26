@@ -703,8 +703,29 @@ export class ProjectsService {
       );
     }
 
+    const audioAssets = await this.assetService.listByProject(
+      project.id,
+      'AUDIO',
+    );
+    const effectiveScenes = scenes.scenes.map((s) => {
+      const audioAsset = audioAssets.find(
+        (a) => String(a.sceneId) === String(s.id),
+      );
+      const audioDuration = audioAsset?.duration ?? 0;
+      if (audioDuration > 0) {
+        return {
+          ...s,
+          duration: Math.max(
+            s.duration,
+            Math.ceil(audioDuration * 10) / 10,
+          ),
+        };
+      }
+      return s;
+    });
+
     const output = await this.subtitlePipeline.run({
-      scenes: scenes.scenes,
+      scenes: effectiveScenes,
       dialogues: dialogues.scenes,
     });
 
@@ -774,6 +795,38 @@ export class ProjectsService {
     };
 
     await this.mongo.setArtifact(project.id, 'voice', payload);
+
+    const scenesArtifact = await this.mongo.getArtifact<SceneOutput>(
+      project.id,
+      'scenes',
+    );
+    if (scenesArtifact && scenesArtifact.scenes) {
+      const audioAssets = await this.assetService.listByProject(
+        project.id,
+        'AUDIO',
+      );
+      const updatedScenes = scenesArtifact.scenes.map((s) => {
+        const audioAsset = audioAssets.find(
+          (a) => String(a.sceneId) === String(s.id),
+        );
+        const audioDuration = audioAsset?.duration ?? 0;
+        if (audioDuration > 0) {
+          return {
+            ...s,
+            duration: Math.max(
+              s.duration,
+              Math.ceil(audioDuration * 10) / 10,
+            ),
+          };
+        }
+        return s;
+      });
+      await this.mongo.setArtifact(project.id, 'scenes', {
+        ...scenesArtifact,
+        scenes: updatedScenes,
+      });
+    }
+
     await this.updateProjectTimestamp(slug);
 
     this.logger.log(
@@ -798,6 +851,10 @@ export class ProjectsService {
       'prompts',
     );
     const assets = await this.assetService.listByProject(project.id, 'IMAGE');
+    const audioAssets = await this.assetService.listByProject(
+      project.id,
+      'AUDIO',
+    );
 
     if (!scenes || scenes.status !== 'ready') {
       throw new ConflictException('Scenes must be generated before rendering.');
@@ -820,9 +877,19 @@ export class ProjectsService {
     const renderScenes = scenes.scenes.map((scene) => {
       const prompt = prompts.scenes.find((p) => p.id === scene.id);
       const imageAsset = assets.find((a) => a.sceneId === String(scene.id));
+      const audioAsset = audioAssets.find(
+        (a) => String(a.sceneId) === String(scene.id),
+      );
+      const audioDuration = audioAsset?.duration ?? 0;
+
+      const duration =
+        audioDuration > 0
+          ? Math.max(scene.duration, Math.ceil(audioDuration * 10) / 10)
+          : scene.duration;
+
       return {
         id: String(scene.id),
-        duration: scene.duration,
+        duration,
         imagePath: imageAsset?.path ?? '',
         prompt: prompt ?? {
           id: scene.id,
@@ -832,6 +899,7 @@ export class ProjectsService {
           lighting: '',
           mood: '',
         },
+        audioPath: audioAsset?.path,
       };
     });
 
@@ -861,6 +929,10 @@ export class ProjectsService {
       'prompts',
     );
     const assets = await this.assetService.listByProject(project.id, 'IMAGE');
+    const audioAssets = await this.assetService.listByProject(
+      project.id,
+      'AUDIO',
+    );
 
     if (!scenes || scenes.status !== 'ready') {
       throw new ConflictException('Scenes must be generated before rendering.');
@@ -885,6 +957,13 @@ export class ProjectsService {
       );
     }
 
+    const audioAsset = audioAssets.find((a) => a.sceneId === sceneId);
+    const audioDuration = audioAsset?.duration ?? 0;
+    const duration =
+      audioDuration > 0
+        ? Math.max(scene.duration, Math.ceil(audioDuration * 10) / 10)
+        : scene.duration;
+
     this.logger.log(`Rendering scene ${sceneId} in project: "${slug}"`);
 
     const results = await this.sceneRendererService.renderScenes({
@@ -893,9 +972,10 @@ export class ProjectsService {
       scenes: [
         {
           id: sceneId,
-          duration: scene.duration,
+          duration,
           imagePath: imageAsset.path!,
           prompt,
+          audioPath: audioAsset?.path,
         },
       ],
     });
@@ -951,13 +1031,25 @@ export class ProjectsService {
 
     this.logger.log(`Composing final video for project: "${slug}"`);
 
+    const composeScenes = scenes.scenes.map((s) => {
+      const audioAsset = audioAssets.find(
+        (a) => String(a.sceneId) === String(s.id),
+      );
+      const audioDuration = audioAsset?.duration ?? 0;
+      const duration =
+        audioDuration > 0
+          ? Math.max(s.duration, Math.ceil(audioDuration * 10) / 10)
+          : s.duration;
+      return {
+        id: String(s.id),
+        duration,
+      };
+    });
+
     const result = await this.compositionService.compose({
       projectId: project.id,
       projectSlug: slug,
-      scenes: scenes.scenes.map((s) => ({
-        id: String(s.id),
-        duration: s.duration,
-      })),
+      scenes: composeScenes,
       srtContent: subtitles.srtContent,
     });
 
@@ -966,8 +1058,6 @@ export class ProjectsService {
       finalPath: result.finalPath,
       composedAt: result.exportedAt,
     });
-    await this.updateProjectTimestamp(slug);
-
     return {
       success: true,
       message: 'Video composed successfully.',

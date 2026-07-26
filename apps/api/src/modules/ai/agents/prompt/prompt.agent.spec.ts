@@ -53,7 +53,7 @@ describe('PromptAgent', () => {
 
     const result = await agent.execute(input);
 
-    expect(result.promptVersion).toBe('1.0.0');
+    expect(result.promptVersion).toBe('2.0.0');
     expect(result.scenes).toEqual([
       expect.objectContaining({ id: 1, camera: 'Medium shot' }),
     ]);

@@ -135,20 +135,24 @@ export class CompositionService {
               data = await fs.readFile(this.storage.getAbsolutePath(aa.path));
             }
             if (data) {
-              const tmpMp3 = path.join(
+              const tmpInput = path.join(
                 tempDir,
                 'audio',
-                `tmp-${scene.id}-${Math.random().toString(36).slice(2, 8)}.mp3`,
+                `tmp-${scene.id}-${Math.random().toString(36).slice(2, 8)}.wav`,
               );
-              await fs.writeFile(tmpMp3, data);
-              const tmpWav = tmpMp3.replace('.mp3', '.wav');
+              await fs.writeFile(tmpInput, data);
+              const tmpWav = path.join(
+                tempDir,
+                'audio',
+                `converted-${scene.id}-${Math.random().toString(36).slice(2, 8)}.wav`,
+              );
               await this.ffmpeg.run(
-                ['-y', '-i', tmpMp3, '-ar', '16000', '-ac', '1', tmpWav],
+                ['-y', '-i', tmpInput, '-ar', '44100', '-ac', '1', tmpWav],
                 `convert audio ${aa.filename}`,
               );
               audioBuffers.push(await fs.readFile(tmpWav));
-              await fs.rm(tmpMp3, { force: true });
-              await fs.rm(tmpWav, { force: true });
+              await fs.rm(tmpInput, { force: true }).catch(() => {});
+              await fs.rm(tmpWav, { force: true }).catch(() => {});
             }
           }
 
@@ -194,28 +198,36 @@ export class CompositionService {
               );
             }
 
+            const maxAudioDuration = Math.max(
+              ...sceneAudio.map((a) => a.duration || 0),
+            );
+            const effectiveSceneDuration = Math.max(
+              scene.duration,
+              maxAudioDuration,
+            );
+
             await this.ffmpeg.run(
               [
                 '-y',
                 '-i',
                 mergedAudio,
                 '-af',
-                `apad=whole_dur=${scene.duration}`,
+                `apad=whole_dur=${effectiveSceneDuration}`,
                 '-t',
-                String(scene.duration),
+                String(effectiveSceneDuration),
                 '-ar',
-                '16000',
+                '44100',
                 '-ac',
                 '1',
                 sceneAudioFile,
               ],
-              `pad audio scene ${scene.id} to ${scene.duration}s`,
+              `pad audio scene ${scene.id} to ${effectiveSceneDuration}s`,
             );
           }
         }
 
         if (!sceneAudio || sceneAudio.length === 0) {
-          const sampleRate = 16000;
+          const sampleRate = 44100;
           const numSamples = Math.floor(sampleRate * scene.duration);
           const header = Buffer.alloc(44);
           const dataSize = numSamples * 2;

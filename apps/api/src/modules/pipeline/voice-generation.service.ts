@@ -134,30 +134,36 @@ export class VoiceGenerationService {
       for (const scene of scenes) {
         const lineBuffers: Array<{ buffer: Buffer; duration: number }> = [];
 
+        let lineIndex = 0;
         for (const line of scene.dialogue) {
+          lineIndex++;
           try {
             const assigned = this.getVoiceForCharacter(line.character, isHindi);
-
-            let audioBuffer: Buffer;
-            let duration = this.estimateDuration(line.text);
+            const pauseDuration = this.COMEDY_PAUSES[line.timing] ?? 0;
 
             const ttsResult = await this.callTTS(
               line.text,
               assigned.voice,
               line.emotion,
             );
-            if (ttsResult) {
-              audioBuffer = ttsResult.buffer;
-              duration = ttsResult.duration;
-            } else {
-              audioBuffer = this.generateSilentAudio(duration);
-            }
 
-            const pauseDuration = this.COMEDY_PAUSES[line.timing] ?? 0;
-            if (pauseDuration > 0) {
-              const pauseBuffer = this.generateSilentAudio(pauseDuration);
-              audioBuffer = Buffer.concat([pauseBuffer, audioBuffer]);
-              duration += pauseDuration;
+            let audioBuffer: Buffer;
+            let duration: number;
+
+            if (ttsResult) {
+              const converted = await this.convertMp3ToWav(
+                ttsResult.buffer,
+                pauseDuration,
+                tmpDir,
+                scene.id,
+                lineIndex,
+              );
+              audioBuffer = converted.buffer;
+              duration =
+                converted.duration || ttsResult.duration + pauseDuration;
+            } else {
+              duration = this.estimateDuration(line.text) + pauseDuration;
+              audioBuffer = this.generateSilentAudio(duration);
             }
 
             lineBuffers.push({ buffer: audioBuffer, duration });
@@ -468,8 +474,58 @@ export class VoiceGenerationService {
     return 0;
   }
 
+  private async convertMp3ToWav(
+    mp3Buffer: Buffer,
+    pauseDuration: number,
+    tmpDir: string,
+    sceneId: number,
+    lineIndex: number,
+  ): Promise<{ buffer: Buffer; duration: number }> {
+    const inputMp3Path = path.join(
+      tmpDir,
+      `scene-${sceneId}-line-${lineIndex}-raw.mp3`,
+    );
+    const outputWavPath = path.join(
+      tmpDir,
+      `scene-${sceneId}-line-${lineIndex}.wav`,
+    );
+
+    await fs.writeFile(inputMp3Path, mp3Buffer);
+
+    const ffmpegArgs: string[] = ['-y', '-i', inputMp3Path];
+    if (pauseDuration > 0) {
+      const pauseMs = Math.round(pauseDuration * 1000);
+      ffmpegArgs.push('-af', `adelay=${pauseMs}:all=1`);
+    }
+    ffmpegArgs.push(
+      '-ar',
+      '44100',
+      '-ac',
+      '1',
+      '-c:a',
+      'pcm_s16le',
+      outputWavPath,
+    );
+
+    await this.ffmpeg.run(
+      ffmpegArgs,
+      `convert tts mp3 to wav scene ${sceneId} line ${lineIndex}`,
+    );
+
+    const buffer = await fs.readFile(outputWavPath);
+    let duration = await this.getAudioDuration(outputWavPath);
+    if (duration <= 0) {
+      duration = 0;
+    }
+
+    await fs.rm(inputMp3Path, { force: true }).catch(() => {});
+    await fs.rm(outputWavPath, { force: true }).catch(() => {});
+
+    return { buffer, duration };
+  }
+
   private generateSilentAudio(durationSeconds: number): Buffer {
-    const sampleRate = 16000;
+    const sampleRate = 44100;
     const numSamples = Math.floor(sampleRate * durationSeconds);
     const header = Buffer.alloc(44);
     const dataSize = numSamples * 2;

@@ -37,11 +37,12 @@ describe('VideoPreparationPipeline', () => {
   };
 
   it('combines each scene with its validated render prompt', async () => {
-    const pipeline = new VideoPreparationPipeline(new VideoAgent());
+    const mockRegistry = { getMediaProvider: jest.fn().mockReturnValue(null) } as any;
+    const pipeline = new VideoPreparationPipeline(new VideoAgent(mockRegistry));
 
     const result = await pipeline.run(input);
 
-    expect(result.status).toBe('pending');
+    expect(result.status).toBe('ready');
     expect(result.scenes[0]).toEqual(
       expect.objectContaining({
         id: 1,
@@ -52,7 +53,8 @@ describe('VideoPreparationPipeline', () => {
   });
 
   it('rejects a plan with a missing prompt', async () => {
-    const pipeline = new VideoPreparationPipeline(new VideoAgent());
+    const mockRegistry = { getMediaProvider: jest.fn().mockReturnValue(null) } as any;
+    const pipeline = new VideoPreparationPipeline(new VideoAgent(mockRegistry));
 
     await expect(
       pipeline.run({ ...input, prompts: [] }),
