@@ -7,6 +7,16 @@ export interface BaseStepProps {
   setError: (error: string | null) => void;
 }
 
+export interface PipelineStageInfo {
+  stage: string;
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled";
+  startedAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  retryCount?: number;
+  errorMessage?: string;
+}
+
 export interface DirectorStepProps extends BaseStepProps {
   plan: import("@/features/projects/services/project.service").DirectorPlan | null;
   onGenerateDirectorPlan: () => Promise<void>;
@@ -48,6 +58,7 @@ export interface ProduceStepProps extends BaseStepProps {
   subtitles: import("@/features/projects/services/project.service").Subtitles | null;
   compositionResult: import("@/features/projects/services/project.service").CompositionResult | null;
   assets: import("@/features/projects/services/project.service").Asset[] | null;
+  pipelineStages?: PipelineStageInfo[];
   onRenderProject: () => Promise<void>;
   onRenderScene: (sceneId: string) => Promise<void>;
   onGenerateVoice: () => Promise<void>;

@@ -543,6 +543,7 @@ export function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
             subtitles={subtitles}
             compositionResult={compositionResult}
             assets={assets}
+            pipelineStages={pipelineStatus?.stages}
             loading={loading}
             error={error}
             setError={setError}

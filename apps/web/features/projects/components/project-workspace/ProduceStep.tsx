@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Film,
@@ -11,10 +12,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  Music,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Hash,
 } from "lucide-react";
 
 import type { Step } from "../ProjectWorkspace";
+import type { PipelineStageInfo } from "./step-types";
 import type {
   Scenes,
   Prompts,
@@ -26,6 +31,9 @@ import type {
   CompositionResult,
 } from "@/features/projects/services/project.service";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api";
+
 export interface ProduceStepProps {
   projectSlug: string;
   scenes: Scenes | null;
@@ -36,6 +44,7 @@ export interface ProduceStepProps {
   subtitles: SubtitlesType | null;
   compositionResult: CompositionResult | null;
   assets: Asset[] | null;
+  pipelineStages?: PipelineStageInfo[];
   loading: Record<Step, boolean>;
   error: string | null;
   setError: (error: string | null) => void;
@@ -47,18 +56,68 @@ export interface ProduceStepProps {
   onRefreshPipeline: () => Promise<void>;
 }
 
+interface ProduceLoading {
+  render: boolean;
+  voice: boolean;
+  subtitles: boolean;
+  compose: boolean;
+}
+
+function getStageStatus(
+  stages: PipelineStageInfo[] | undefined,
+  stage: string,
+): PipelineStageInfo["status"] {
+  return stages?.find((s) => s.stage === stage)?.status ?? "pending";
+}
+
+function StageBadge({ status }: { status: PipelineStageInfo["status"] }) {
+  const config: Record<
+    PipelineStageInfo["status"],
+    { label: string; cls: string }
+  > = {
+    pending: {
+      label: "Pending",
+      cls: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+    },
+    queued: {
+      label: "Queued",
+      cls: "border-blue-500/20 bg-blue-500/10 text-blue-400",
+    },
+    running: {
+      label: "Running",
+      cls: "border-amber-500/20 bg-amber-500/10 text-amber-400",
+    },
+    completed: {
+      label: "Done",
+      cls: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+    },
+    failed: {
+      label: "Failed",
+      cls: "border-rose-500/20 bg-rose-500/10 text-rose-400",
+    },
+    cancelled: {
+      label: "Cancelled",
+      cls: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+    },
+  };
+  const { label, cls } = config[status];
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
 export function ProduceStep({
   projectSlug,
   scenes,
-  prompts,
-  imageResults,
   renderResults,
   voiceResult,
   subtitles,
   compositionResult,
   assets,
+  pipelineStages,
   loading,
-  error,
   setError,
   onRenderProject,
   onRenderScene,
@@ -67,16 +126,65 @@ export function ProduceStep({
   onComposeVideo,
   onRefreshPipeline,
 }: ProduceStepProps) {
-  const hasImages = Boolean(imageResults && imageResults.length > 0);
+  const [produceLoading, setProduceLoading] = useState<ProduceLoading>({
+    render: false,
+    voice: false,
+    subtitles: false,
+    compose: false,
+  });
+
+  const hasImages = Boolean(
+    assets && assets.filter((a) => a.type === "IMAGE" && a.status === "ready").length > 0,
+  );
   const hasRenderedClips = Boolean(
     renderResults && renderResults.length > 0,
   );
-  const hasVoice = Boolean(voiceResult);
+  const hasVoice = Boolean(voiceResult && voiceResult.lines.length > 0);
   const hasSubtitles = Boolean(subtitles && subtitles.status === "ready");
   const hasComposed = Boolean(compositionResult);
 
+  const anyLoading = loading.produce || Object.values(produceLoading).some(Boolean);
+
+  const withLoading = async <T,>(
+    key: keyof ProduceLoading,
+    fn: () => Promise<T>,
+  ): Promise<T | undefined> => {
+    setProduceLoading((prev) => ({ ...prev, [key]: true }));
+    setError(null);
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : `Failed to complete ${key}.`,
+      );
+      return undefined;
+    } finally {
+      setProduceLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleRender = () =>
+    withLoading("render", onRenderProject);
+
+  const handleVoice = () =>
+    withLoading("voice", onGenerateVoice);
+
+  const handleSubtitles = () =>
+    withLoading("subtitles", onGenerateSubtitles);
+
+  const handleCompose = () =>
+    withLoading("compose", onComposeVideo);
+
+  const renderStage = getStageStatus(pipelineStages, "scene-rendering");
+  const voiceStage = getStageStatus(pipelineStages, "voice-generation");
+  const subtitleStage = getStageStatus(pipelineStages, "subtitle-generation");
+  const exportStage = getStageStatus(pipelineStages, "export");
+
   return (
     <div className="grid gap-6 md:grid-cols-3">
+      {/* Left Sidebar: Controls */}
       <div className="space-y-6 md:col-span-1">
         <div className="rounded-2xl border border-[#27272A] bg-[#111111] p-6 space-y-4">
           <div className="flex items-center gap-3">
@@ -90,156 +198,69 @@ export function ProduceStep({
 
           <div className="space-y-3">
             {/* Step 1: Render Scenes */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                {hasRenderedClips ? (
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
-                ) : (
-                  <span className="flex size-3.5 items-center justify-center rounded-full border border-zinc-600 text-[8px] text-zinc-500">
-                    1
-                  </span>
-                )}
-                Render Scenes
-              </div>
-              <Button
-                onClick={onRenderProject}
-                className="w-full bg-[#7C3AED] text-white hover:bg-[#6d28d9] font-semibold py-5"
-                disabled={loading.produce || !hasImages}
-              >
-                {loading.produce ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Rendering...
-                  </>
-                ) : hasRenderedClips ? (
-                  <>
-                    <RefreshCw className="mr-2 size-4" />
-                    Re-render All
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 size-4" />
-                    Render All Scenes
-                  </>
-                )}
-              </Button>
-            </div>
+            <ProduceAction
+              step={1}
+              label="Render Scenes"
+              stageStatus={renderStage}
+              isDone={hasRenderedClips}
+              isLoading={produceLoading.render}
+              disabled={anyLoading || !hasImages}
+              loadingText="Rendering..."
+              doneLabel="Re-render All"
+              defaultLabel="Render All Scenes"
+              onAction={handleRender}
+            />
 
             {/* Step 2: Generate Voice */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                {hasVoice ? (
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
-                ) : (
-                  <span className="flex size-3.5 items-center justify-center rounded-full border border-zinc-600 text-[8px] text-zinc-500">
-                    2
-                  </span>
-                )}
-                Voice (TTS)
-              </div>
-              <Button
-                onClick={onGenerateVoice}
-                className={
-                  hasVoice
-                    ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
-                    : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
-                }
-                disabled={loading.produce || !hasRenderedClips}
-                variant={hasVoice ? "outline" : "default"}
-              >
-                {loading.produce ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Generating Voice...
-                  </>
-                ) : (
-                  <>
-                    <Mic className="mr-2 size-4" />
-                    {hasVoice ? "Regenerate Voice" : "Generate Voice"}
-                  </>
-                )}
-              </Button>
-            </div>
+            <ProduceAction
+              step={2}
+              label="Voice (TTS)"
+              stageStatus={voiceStage}
+              isDone={hasVoice}
+              isLoading={produceLoading.voice}
+              disabled={anyLoading || !hasRenderedClips}
+              loadingText="Generating Voice..."
+              doneLabel="Regenerate Voice"
+              defaultLabel="Generate Voice"
+              onAction={handleVoice}
+            />
 
             {/* Step 3: Generate Subtitles */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                {hasSubtitles ? (
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
-                ) : (
-                  <span className="flex size-3.5 items-center justify-center rounded-full border border-zinc-600 text-[8px] text-zinc-500">
-                    3
-                  </span>
-                )}
-                Subtitles
-              </div>
-              <Button
-                onClick={onGenerateSubtitles}
-                className={
-                  hasSubtitles
-                    ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
-                    : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
-                }
-                disabled={loading.produce || !hasRenderedClips}
-                variant={hasSubtitles ? "outline" : "default"}
-              >
-                {loading.produce ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Subtitles className="mr-2 size-4" />
-                    {hasSubtitles ? "Regenerate Subtitles" : "Generate Subtitles"}
-                  </>
-                )}
-              </Button>
-            </div>
+            <ProduceAction
+              step={3}
+              label="Subtitles"
+              stageStatus={subtitleStage}
+              isDone={hasSubtitles}
+              isLoading={produceLoading.subtitles}
+              disabled={anyLoading || !hasRenderedClips}
+              loadingText="Generating..."
+              doneLabel="Regenerate Subtitles"
+              defaultLabel="Generate Subtitles"
+              onAction={handleSubtitles}
+            />
 
             {/* Step 4: Compose Final Video */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                {hasComposed ? (
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
-                ) : (
-                  <span className="flex size-3.5 items-center justify-center rounded-full border border-zinc-600 text-[8px] text-zinc-500">
-                    4
-                  </span>
-                )}
-                Compose Final
-              </div>
-              <Button
-                onClick={onComposeVideo}
-                className="w-full bg-emerald-600 py-5 font-semibold text-white hover:bg-emerald-500"
-                disabled={loading.produce || !hasSubtitles}
-              >
-                {loading.produce ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Composing...
-                  </>
-                ) : hasComposed ? (
-                  <>
-                    <RefreshCw className="mr-2 size-4" />
-                    Re-compose
-                  </>
-                ) : (
-                  <>
-                    <Film className="mr-2 size-4" />
-                    Compose Final Video
-                  </>
-                )}
-              </Button>
-            </div>
+            <ProduceAction
+              step={4}
+              label="Compose Final"
+              stageStatus={exportStage}
+              isDone={hasComposed}
+              isLoading={produceLoading.compose}
+              disabled={anyLoading || !hasSubtitles}
+              loadingText="Composing..."
+              doneLabel="Re-compose"
+              defaultLabel="Compose Final Video"
+              onAction={handleCompose}
+              accent
+            />
 
             {/* Download */}
             {hasComposed && (
               <a
-                href={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${projectSlug}/final/download`}
+                href={`${API_BASE_URL}/projects/${projectSlug}/final/download`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex w-full items-center justify-center rounded-lg border border-[#27272A] bg-[#18181B] px-4 py-5 text-sm font-semibold text-zinc-200 hover:bg-[#27272A]"
+                className="inline-flex w-full items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
               >
                 <Download className="mr-2 size-4" />
                 Download Final MP4
@@ -250,6 +271,7 @@ export function ProduceStep({
               onClick={onRefreshPipeline}
               variant="outline"
               className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-3"
+              disabled={anyLoading}
             >
               <RefreshCw className="mr-2 size-4" />
               Refresh Status
@@ -258,6 +280,7 @@ export function ProduceStep({
         </div>
       </div>
 
+      {/* Right Content: Results */}
       <div className="md:col-span-2">
         <ProduceResultsView
           projectSlug={projectSlug}
@@ -267,13 +290,99 @@ export function ProduceStep({
           subtitles={subtitles}
           compositionResult={compositionResult}
           assets={assets}
-          loading={loading}
+          loading={produceLoading}
+          parentLoading={loading}
           onRenderScene={onRenderScene}
         />
       </div>
     </div>
   );
 }
+
+// ─── Produce Action Button ────────────────────────────────────────────────
+
+function ProduceAction({
+  step,
+  label,
+  stageStatus,
+  isDone,
+  isLoading,
+  disabled,
+  loadingText,
+  doneLabel,
+  defaultLabel,
+  onAction,
+  accent,
+}: {
+  step: number;
+  label: string;
+  stageStatus: PipelineStageInfo["status"];
+  isDone: boolean;
+  isLoading: boolean;
+  disabled: boolean;
+  loadingText: string;
+  doneLabel: string;
+  defaultLabel: string;
+  onAction: () => void;
+  accent?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          {isDone ? (
+            <CheckCircle2 className="size-3.5 text-emerald-400" />
+          ) : (
+            <span className="flex size-3.5 items-center justify-center rounded-full border border-zinc-600 text-[8px] text-zinc-500">
+              {step}
+            </span>
+          )}
+          {label}
+        </div>
+        <StageBadge status={stageStatus} />
+      </div>
+      <Button
+        onClick={onAction}
+        className={
+          accent
+            ? "w-full bg-emerald-600 py-5 font-semibold text-white hover:bg-emerald-500"
+            : isDone
+              ? "w-full border-[#27272A] py-5 font-semibold text-zinc-300 hover:bg-[#1c1c1f]"
+              : "w-full bg-[#7C3AED] py-5 font-semibold text-white hover:bg-[#6d28d9]"
+        }
+        disabled={disabled}
+        variant={accent ? "default" : isDone ? "outline" : "default"}
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 size-4 animate-spin" />
+            {loadingText}
+          </>
+        ) : isDone ? (
+          <>
+            <RefreshCw className="mr-2 size-4" />
+            {doneLabel}
+          </>
+        ) : (
+          <>
+            {accent ? (
+              <Film className="mr-2 size-4" />
+            ) : step === 2 ? (
+              <Mic className="mr-2 size-4" />
+            ) : step === 3 ? (
+              <Subtitles className="mr-2 size-4" />
+            ) : (
+              <Play className="mr-2 size-4" />
+            )}
+            {defaultLabel}
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// ─── Results View ─────────────────────────────────────────────────────────
 
 function ProduceResultsView({
   projectSlug,
@@ -284,6 +393,7 @@ function ProduceResultsView({
   compositionResult,
   assets,
   loading,
+  parentLoading,
   onRenderScene,
 }: {
   projectSlug: string;
@@ -293,9 +403,13 @@ function ProduceResultsView({
   subtitles: SubtitlesType | null;
   compositionResult: CompositionResult | null;
   assets: Asset[] | null;
-  loading: Record<Step, boolean>;
+  loading: ProduceLoading;
+  parentLoading: Record<Step, boolean>;
   onRenderScene: (sceneId: string) => Promise<void>;
 }) {
+  const anyLoading =
+    parentLoading.produce || Object.values(loading).some(Boolean);
+
   if (!renderResults && !compositionResult) {
     return (
       <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
@@ -314,131 +428,388 @@ function ProduceResultsView({
   return (
     <div className="space-y-4">
       {/* Scene Clips */}
-      {renderResults && (
-        <>
-          <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
-            {renderResults.length} scene clips rendered · 1080×1920 · 30 FPS
-          </div>
-          {renderResults.map((result) => {
-            const scene = scenes?.scenes.find(
-              (s) => String(s.id) === result.sceneId,
-            );
-            const videoAsset = assets?.find(
-              (a) => a.sceneId === result.sceneId && a.type === "VIDEO",
-            );
-            return (
-              <div
-                key={result.sceneId}
-                className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4 shadow-md"
-              >
-                <div className="flex items-center justify-between border-b border-[#27272A]/50 pb-3">
-                  <div className="flex items-center gap-3">
-                    <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
-                      #{result.sceneId}
-                    </span>
-                    <h4 className="font-bold text-white text-base">
-                      {scene?.title ?? `Scene ${result.sceneId}`}
-                    </h4>
-                  </div>
-                  <span
-                    className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                      videoAsset?.status === "ready"
-                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                        : "border-amber-500/20 bg-amber-500/10 text-amber-400"
-                    }`}
-                  >
-                    {videoAsset?.status ?? "pending"}
-                  </span>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="sm:col-span-1">
-                    {videoAsset && videoAsset.status === "ready" ? (
-                      <video
-                        src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/projects/${projectSlug}/assets/${videoAsset._id}/file`}
-                        className="w-full rounded-xl border border-[#27272A] object-cover aspect-video bg-[#18181B]"
-                        controls
-                      />
-                    ) : (
-                      <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-[#27272A] bg-[#18181B] text-xs text-zinc-500">
-                        No video
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="sm:col-span-2 space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                      <div>
-                        <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                          Duration
-                        </span>
-                        <p className="text-zinc-300">{result.duration}s</p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                          Resolution
-                        </span>
-                        <p className="text-zinc-300">
-                          {result.width}×{result.height}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        onClick={() => onRenderScene(result.sceneId)}
-                        variant="outline"
-                        size="sm"
-                        className="border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f]"
-                        disabled={loading.produce}
-                      >
-                        <RefreshCw className="mr-1 size-3" />
-                        Re-render
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </>
+      {renderResults && renderResults.length > 0 && (
+        <SceneClipsSection
+          projectSlug={projectSlug}
+          scenes={scenes}
+          renderResults={renderResults}
+          assets={assets}
+          loading={anyLoading}
+          onRenderScene={onRenderScene}
+        />
       )}
 
-      {/* Voice Info */}
-      {voiceResult && (
-        <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
-          <div className="flex items-center gap-2">
-            <Mic className="size-4 text-[#A78BFA]" />
-            <span>
-              Voice generated: {voiceResult.lines.length} lines ·{" "}
-              {voiceResult.totalDuration.toFixed(1)}s total
-            </span>
-          </div>
-        </div>
+      {/* Voice Results */}
+      {voiceResult && voiceResult.lines.length > 0 && (
+        <VoiceSection
+          projectSlug={projectSlug}
+          voiceResult={voiceResult}
+        />
       )}
 
-      {/* Subtitles Info */}
+      {/* Subtitles */}
       {subtitles && subtitles.status === "ready" && (
-        <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
-          <div className="flex items-center gap-2">
-            <Subtitles className="size-4 text-[#A78BFA]" />
-            <span>Subtitles: {subtitles.cues.length} cues generated</span>
-          </div>
-        </div>
+        <SubtitlesSection subtitles={subtitles} />
       )}
 
       {/* Composition Result */}
       {compositionResult && (
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="size-4" />
-            <span>
-              Final video composed · {compositionResult.duration}s · Ready for
-              download
-            </span>
+        <CompositionSection
+          projectSlug={projectSlug}
+          compositionResult={compositionResult}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Scene Clips Section ──────────────────────────────────────────────────
+
+function SceneClipsSection({
+  projectSlug,
+  scenes,
+  renderResults,
+  assets,
+  loading,
+  onRenderScene,
+}: {
+  projectSlug: string;
+  scenes: Scenes | null;
+  renderResults: SceneRenderResult[];
+  assets: Asset[] | null;
+  loading: boolean;
+  onRenderScene: (sceneId: string) => Promise<void>;
+}) {
+  return (
+    <>
+      <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
+        {renderResults.length} scene clips rendered
+        {renderResults[0] && (
+          <span>
+            {" "}&middot; {renderResults[0].width}&times;{renderResults[0].height}{" "}
+            &middot; {renderResults[0].fps} FPS
+          </span>
+        )}
+      </div>
+      {renderResults.map((result) => {
+        const scene = scenes?.scenes.find(
+          (s) => String(s.id) === result.sceneId,
+        );
+        const videoAsset = assets?.find(
+          (a) => a.sceneId === result.sceneId && a.type === "VIDEO",
+        );
+        return (
+          <div
+            key={result.sceneId}
+            className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-[#27272A]/50 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="flex size-7 items-center justify-center rounded-lg bg-[#7C3AED]/10 text-xs font-bold text-[#A78BFA] border border-[#7C3AED]/20">
+                  #{result.sceneId}
+                </span>
+                <h4 className="font-bold text-white text-base">
+                  {scene?.title ?? `Scene ${result.sceneId}`}
+                </h4>
+              </div>
+              <span
+                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                  videoAsset?.status === "ready"
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                    : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                }`}
+              >
+                {videoAsset?.status ?? "pending"}
+              </span>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="sm:col-span-1">
+                {videoAsset && videoAsset.status === "ready" ? (
+                  <video
+                    src={`${API_BASE_URL}/projects/${projectSlug}/assets/${videoAsset._id}/file`}
+                    className="w-full rounded-xl border border-[#27272A] object-cover aspect-video bg-[#18181B]"
+                    controls
+                  />
+                ) : (
+                  <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-[#27272A] bg-[#18181B] text-xs text-zinc-500">
+                    No video
+                  </div>
+                )}
+              </div>
+
+              <div className="sm:col-span-2 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3 text-xs">
+                  <MetaField label="Duration" value={`${result.duration}s`} />
+                  <MetaField label="Resolution" value={`${result.width}×${result.height}`} />
+                  <MetaField label="FPS" value={String(result.fps)} />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    onClick={() => onRenderScene(result.sceneId)}
+                    variant="outline"
+                    size="sm"
+                    className="border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f]"
+                    disabled={loading}
+                  >
+                    <RefreshCw className="mr-1 size-3" />
+                    Re-render
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
+        );
+      })}
+    </>
+  );
+}
+
+// ─── Voice Section ────────────────────────────────────────────────────────
+
+function VoiceSection({
+  projectSlug,
+  voiceResult,
+}: {
+  projectSlug: string;
+  voiceResult: VoiceGenerationResult;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  const sceneGroups = new Map<
+    string,
+    typeof voiceResult.lines
+  >();
+  for (const line of voiceResult.lines) {
+    const existing = sceneGroups.get(line.sceneId) ?? [];
+    existing.push(line);
+    sceneGroups.set(line.sceneId, existing);
+  }
+
+  const readyCount = voiceResult.lines.filter(
+    (l) => l.status === "ready",
+  ).length;
+  const errorCount = voiceResult.lines.filter(
+    (l) => l.status === "error",
+  ).length;
+
+  return (
+    <div className="rounded-2xl border border-[#27272A] bg-[#111111] overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-[#18181B] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <Mic className="size-4 text-[#A78BFA]" />
+          <h4 className="font-bold text-white">Voice Generation</h4>
+          <span className="text-xs text-zinc-400">
+            {readyCount} lines &middot; {voiceResult.totalDuration.toFixed(1)}s total
+            {errorCount > 0 && (
+              <span className="ml-2 text-rose-400">
+                &middot; {errorCount} failed
+              </span>
+            )}
+          </span>
+        </div>
+        {expanded ? (
+          <ChevronUp className="size-4 text-zinc-500" />
+        ) : (
+          <ChevronDown className="size-4 text-zinc-500" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-[#27272A] px-5 pb-5 space-y-4">
+          {Array.from(sceneGroups.entries()).map(([sceneId, lines]) => (
+            <div key={sceneId} className="space-y-2 pt-3">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                <Hash className="size-3" />
+                Scene {sceneId}
+              </div>
+              {lines.map((line, idx) => (
+                <div
+                  key={`${sceneId}-${idx}`}
+                  className="flex items-start gap-3 rounded-xl border border-[#27272A]/50 bg-[#18181B] p-3"
+                >
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#A78BFA]">
+                        {line.character}
+                      </span>
+                      <span className="text-[10px] rounded-full border border-zinc-700 px-1.5 py-0.5 text-zinc-400">
+                        {line.emotion}
+                      </span>
+                      {line.status === "error" && (
+                        <span className="text-[10px] rounded-full border border-rose-500/30 bg-rose-500/10 px-1.5 py-0.5 text-rose-400">
+                          error
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-zinc-300 leading-relaxed">
+                      {line.text}
+                    </p>
+                    <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+                      <span className="flex items-center gap-1">
+                        <Clock className="size-2.5" />
+                        {line.duration.toFixed(1)}s
+                      </span>
+                    </div>
+                  </div>
+                  {line.status === "ready" && line.audioAssetId && (
+                    <div className="shrink-0">
+                      <audio
+                        controls
+                        preload="none"
+                        className="h-8 w-40"
+                        src={`${API_BASE_URL}/projects/${projectSlug}/assets/${line.audioAssetId}/file`}
+                      />
+                    </div>
+                  )}
+                  {line.status === "error" && (
+                    <div className="shrink-0 flex items-center gap-1 text-xs text-rose-400">
+                      <AlertTriangle className="size-3" />
+                      Failed
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Subtitles Section ────────────────────────────────────────────────────
+
+function SubtitlesSection({
+  subtitles,
+}: {
+  subtitles: SubtitlesType;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const [showSrt, setShowSrt] = useState(false);
+
+  return (
+    <div className="rounded-2xl border border-[#27272A] bg-[#111111] overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-[#18181B] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <Subtitles className="size-4 text-[#A78BFA]" />
+          <h4 className="font-bold text-white">Subtitles</h4>
+          <span className="text-xs text-zinc-400">
+            {subtitles.cues.length} cues generated
+          </span>
+        </div>
+        {expanded ? (
+          <ChevronUp className="size-4 text-zinc-500" />
+        ) : (
+          <ChevronDown className="size-4 text-zinc-500" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-[#27272A] px-5 pb-5 space-y-3">
+          {/* Cue List */}
+          <div className="max-h-64 overflow-y-auto space-y-1 rounded-xl border border-[#27272A]/50 bg-[#18181B] p-3">
+            {subtitles.cues.map((cue) => (
+              <div
+                key={cue.index}
+                className="flex items-baseline gap-3 text-xs py-1"
+              >
+                <span className="w-6 text-right font-mono text-zinc-500 shrink-0">
+                  {cue.index}
+                </span>
+                <span className="font-mono text-zinc-500 shrink-0">
+                  {cue.startTime} &rarr; {cue.endTime}
+                </span>
+                <span className="text-zinc-300">{cue.text}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* SRT Content Toggle */}
+          {subtitles.srtContent && (
+            <div>
+              <button
+                onClick={() => setShowSrt(!showSrt)}
+                className="flex items-center gap-2 text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                {showSrt ? (
+                  <ChevronUp className="size-3" />
+                ) : (
+                  <ChevronDown className="size-3" />
+                )}
+                View SRT Content
+              </button>
+              {showSrt && (
+                <pre className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-[#27272A]/50 bg-[#0a0a0b] p-3 text-[11px] leading-relaxed text-zinc-400 font-mono whitespace-pre-wrap">
+                  {subtitles.srtContent}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Composition Section ──────────────────────────────────────────────────
+
+function CompositionSection({
+  projectSlug,
+  compositionResult,
+}: {
+  projectSlug: string;
+  compositionResult: CompositionResult;
+}) {
+  return (
+    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 overflow-hidden">
+      <div className="px-5 py-4 space-y-3">
+        <div className="flex items-center gap-3">
+          <CheckCircle2 className="size-4 text-emerald-400" />
+          <h4 className="font-bold text-emerald-400">Final Video Ready</h4>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <MetaField label="Duration" value={`${compositionResult.duration}s`} />
+          <MetaField label="Exported" value={new Date(compositionResult.exportedAt).toLocaleDateString()} />
+          <MetaField label="Format" value="MP4 (H.264)" />
+        </div>
+
+        <div className="pt-2">
+          <video
+            controls
+            preload="metadata"
+            className="w-full rounded-xl border border-[#27272A] bg-black aspect-[9/16] max-h-[480px] object-contain"
+            src={`${API_BASE_URL}/projects/${projectSlug}/final/download`}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Shared Components ────────────────────────────────────────────────────
+
+function MetaField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+        {label}
+      </span>
+      <p className="text-sm text-zinc-300">{value}</p>
     </div>
   );
 }
