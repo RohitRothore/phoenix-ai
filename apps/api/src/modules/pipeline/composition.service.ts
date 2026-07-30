@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 import { AssetService } from '../assets/asset.service';
 import { PipelineStateService } from './pipeline-state.service';
@@ -8,6 +10,8 @@ import { GridFsService } from '../../common/storage/gridfs.service';
 import { LocalStorageService } from '../../common/storage/local-storage.service';
 import { FfmpegProcessService } from '../../common/rendering/ffmpeg-process.service';
 import { ProjectAssemblerService } from './project-assembler.service';
+
+const execFileAsync = promisify(execFile);
 
 export interface CompositionInput {
   projectId: string;
@@ -42,7 +46,7 @@ export class CompositionService {
   ) {}
 
   async compose(input: CompositionInput): Promise<CompositionResult> {
-    const { projectId, projectSlug, scenes, srtContent } = input;
+    const { projectId, projectSlug, scenes } = input;
 
     await this.pipelineState.setStatus(projectId, 'export', 'running');
     await this.pipelineState.addLog(projectId, 'export', {
@@ -66,54 +70,86 @@ export class CompositionService {
         'AUDIO',
       );
 
-      const sortedClips = scenes
-        .map((scene) => {
-          const videoAsset = videoAssets.find(
+      // Sort scenes by ID to ensure deterministic ordering
+      const sortedScenes = [...scenes].sort((a, b) =>
+        Number(a.id) < Number(b.id) ? -1 : Number(a.id) > Number(b.id) ? 1 : 0,
+      );
+
+      // Build scene data, ensuring every scene has a video asset
+      const sceneData = sortedScenes.map((scene) => {
+        const videoAsset = videoAssets.find(
+          (a) => String(a.sceneId) === String(scene.id) && a.status === 'ready',
+        );
+        if (!videoAsset) {
+          throw new Error(
+            `No rendered video clip found for scene ${scene.id}. Render all scenes first.`,
+          );
+        }
+
+        // Sort audio assets by scene ID, not filename
+        const sceneAudioAssets = audioAssets
+          .filter(
             (a) =>
               String(a.sceneId) === String(scene.id) && a.status === 'ready',
-          );
-          const sceneAudioAssets = audioAssets
-            .filter(
-              (a) =>
-                String(a.sceneId) === String(scene.id) && a.status === 'ready',
-            )
-            .sort((a, b) => (a.filename ?? '').localeCompare(b.filename ?? ''));
-          return { scene, videoAsset, audioAssets: sceneAudioAssets };
-        })
-        .filter((item) => item.videoAsset);
+          )
+          .sort((a, b) => {
+            const idA = Number(a.sceneId ?? '0');
+            const idB = Number(b.sceneId ?? '0');
+            return idA < idB ? -1 : idA > idB ? 1 : 0;
+          });
 
-      if (sortedClips.length === 0) {
-        throw new Error('No rendered video clips found. Render scenes first.');
-      }
+        return { scene, videoAsset, audioAssets: sceneAudioAssets };
+      });
 
       const clipPaths: string[] = [];
       const audioPaths: string[] = [];
+      let totalDuration = 0;
 
-      for (const {
-        scene,
-        videoAsset,
-        audioAssets: sceneAudio,
-      } of sortedClips) {
+      for (const { scene, videoAsset, audioAssets: sceneAudio } of sceneData) {
         const clipFile = path.join(tempDir, 'clips', `scene-${scene.id}.mp4`);
         let clipData: Buffer | null = null;
 
-        if (videoAsset!.gridfsId) {
+        if (videoAsset.gridfsId) {
           clipData = await this.gridfs.downloadFile(
-            String(videoAsset!.gridfsId),
+            String(videoAsset.gridfsId),
           );
-        } else if (videoAsset!.path?.startsWith('gridfs:')) {
+        } else if (videoAsset.path?.startsWith('gridfs:')) {
           clipData = await this.gridfs.downloadFile(
-            videoAsset!.path.replace('gridfs:', ''),
+            videoAsset.path.replace('gridfs:', ''),
           );
-        } else if (videoAsset!.path) {
-          const absPath = this.storage.getAbsolutePath(videoAsset!.path);
+        } else if (videoAsset.path) {
+          const absPath = this.storage.getAbsolutePath(videoAsset.path);
           clipData = await fs.readFile(absPath);
         }
 
         if (clipData) {
           await fs.writeFile(clipFile, clipData);
-          clipPaths.push(clipFile);
         }
+
+        // Determine the effective scene duration:
+        // use the max of scene duration, video asset duration, and audio duration
+        const videoDuration = videoAsset.duration ?? scene.duration;
+        const maxAudioDuration = Math.max(
+          ...sceneAudio.map((a) => a.duration || 0),
+        );
+        const effectiveSceneDuration = Math.max(
+          scene.duration,
+          videoDuration,
+          maxAudioDuration,
+        );
+
+        // Pad video to effective duration if needed
+        const paddedClipFile = path.join(
+          tempDir,
+          'clips',
+          `scene-${scene.id}-padded.mp4`,
+        );
+        await this.normalizeVideoDuration(
+          clipFile,
+          paddedClipFile,
+          effectiveSceneDuration,
+        );
+        clipPaths.push(paddedClipFile);
 
         const sceneAudioFile = path.join(
           tempDir,
@@ -198,14 +234,7 @@ export class CompositionService {
               );
             }
 
-            const maxAudioDuration = Math.max(
-              ...sceneAudio.map((a) => a.duration || 0),
-            );
-            const effectiveSceneDuration = Math.max(
-              scene.duration,
-              maxAudioDuration,
-            );
-
+            // Pad audio to effective scene duration
             await this.ffmpeg.run(
               [
                 '-y',
@@ -228,7 +257,7 @@ export class CompositionService {
 
         if (!sceneAudio || sceneAudio.length === 0) {
           const sampleRate = 44100;
-          const numSamples = Math.floor(sampleRate * scene.duration);
+          const numSamples = Math.floor(sampleRate * effectiveSceneDuration);
           const header = Buffer.alloc(44);
           const dataSize = numSamples * 2;
           const fileSize = dataSize + 36;
@@ -252,6 +281,7 @@ export class CompositionService {
         }
 
         audioPaths.push(sceneAudioFile);
+        totalDuration += effectiveSceneDuration;
       }
 
       const concatFile = path.join(tempDir, 'concat.txt');
@@ -298,7 +328,7 @@ export class CompositionService {
         'concatenate scene audio',
       );
 
-      const { srtContent, assContent } = input;
+      const { srtContent: srt, assContent } = input;
 
       let subtitleFile: string;
       let subtitleFilter: string;
@@ -309,11 +339,13 @@ export class CompositionService {
         subtitleFilter = `ass=${subtitleFile}`;
       } else {
         subtitleFile = path.join(tempDir, 'subtitles.srt');
-        await fs.writeFile(subtitleFile, srtContent);
+        await fs.writeFile(subtitleFile, srt);
         subtitleFilter = `subtitles=${subtitleFile}:force_style='FontName=DejaVu Sans,FontSize=12,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=4,BackColour=&H80000000,Outline=0,Alignment=2,MarginV=80,MarginL=60,MarginR=60'`;
       }
 
       const withSubtitles = path.join(tempDir, 'with-subtitles.mp4');
+      // Use -t to set output duration to totalDuration instead of -shortest
+      // This prevents cutting audio or video prematurely
       await this.ffmpeg.run(
         [
           '-y',
@@ -339,7 +371,8 @@ export class CompositionService {
           'yuv420p',
           '-movflags',
           '+faststart',
-          '-shortest',
+          '-t',
+          String(totalDuration),
           withSubtitles,
         ],
         'mux video + audio + subtitles',
@@ -352,8 +385,6 @@ export class CompositionService {
         finalData,
         { projectId, type: 'final-export' },
       );
-
-      const totalDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
 
       await this.projectAssembler.assembleExport({
         projectId,
@@ -389,6 +420,112 @@ export class CompositionService {
       throw e;
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /**
+   * Ensures the video clip duration matches the target duration.
+   * If the video is shorter, pads with duplicated last frames (tpad).
+   * If the video is longer, cuts to the target duration.
+   */
+  private async normalizeVideoDuration(
+    inputPath: string,
+    outputPath: string,
+    targetDuration: number,
+  ): Promise<void> {
+    // Check if the input file exists
+    try {
+      await fs.access(inputPath);
+    } catch {
+      // If input doesn't exist, create a black video of the target duration
+      await this.ffmpeg.run(
+        [
+          '-y',
+          '-f',
+          'lavfi',
+          '-i',
+          `color=c=black:s=1080x1920:d=${targetDuration}:r=30`,
+          '-c:v',
+          'libx264',
+          '-pix_fmt',
+          'yuv420p',
+          outputPath,
+        ],
+        `generate black placeholder video ${targetDuration}s`,
+      );
+      return;
+    }
+
+    // Get the actual video duration
+    let actualDuration = 0;
+    try {
+      const { stdout } = await execFileAsync(
+        'ffprobe',
+        [
+          '-v',
+          'error',
+          '-show_entries',
+          'format=duration',
+          '-of',
+          'default=noprint_wrappers=1:nokey=1',
+          inputPath,
+        ],
+        { timeout: 10000 },
+      );
+      actualDuration = parseFloat(stdout.trim());
+    } catch {
+      // If ffprobe fails, assume the video is already the correct duration
+      await fs.copyFile(inputPath, outputPath);
+      return;
+    }
+
+    if (isNaN(actualDuration) || actualDuration <= 0) {
+      await fs.copyFile(inputPath, outputPath);
+      return;
+    }
+
+    const diff = targetDuration - actualDuration;
+
+    if (Math.abs(diff) < 0.1) {
+      // Duration is close enough, just copy
+      await fs.copyFile(inputPath, outputPath);
+      return;
+    }
+
+    if (diff > 0) {
+      // Video is shorter, pad with duplicated last frames
+      await this.ffmpeg.run(
+        [
+          '-y',
+          '-i',
+          inputPath,
+          '-vf',
+          `tpad=stop_mode=clone:stop_duration=${diff}`,
+          '-c:v',
+          'libx264',
+          '-c:a',
+          'copy',
+          '-pix_fmt',
+          'yuv420p',
+          outputPath,
+        ],
+        `pad video to ${targetDuration}s`,
+      );
+    } else {
+      // Video is longer, cut to target duration
+      await this.ffmpeg.run(
+        [
+          '-y',
+          '-i',
+          inputPath,
+          '-c',
+          'copy',
+          '-t',
+          String(targetDuration),
+          outputPath,
+        ],
+        `cut video to ${targetDuration}s`,
+      );
     }
   }
 }

@@ -41,6 +41,10 @@ export interface ImageGenerationInput {
 export class ImageGenerationService {
   private readonly logger = new Logger(ImageGenerationService.name);
 
+  private static readonly MAX_CONCURRENT_IMAGES = 3;
+  private static readonly IMAGE_WIDTH = 1080;
+  private static readonly IMAGE_HEIGHT = 1920;
+
   constructor(
     @Inject(PROVIDER_REGISTRY)
     private readonly registry: ProviderRegistry,
@@ -55,7 +59,6 @@ export class ImageGenerationService {
     input: ImageGenerationInput,
   ): Promise<ImageGenerationResult[]> {
     const { projectId, projectSlug, scenes } = input;
-    const results: ImageGenerationResult[] = [];
 
     await this.pipelineState.setStatus(
       projectId,
@@ -68,165 +71,70 @@ export class ImageGenerationService {
       message: `Starting image generation for ${scenes.length} scenes`,
     });
 
-    for (const scene of scenes) {
-      try {
-        await this.pipelineState.addLog(projectId, 'image-generation', {
-          timestamp: new Date(),
-          level: 'info',
-          message: `Generating image for scene ${scene.id}`,
-        });
+    // Sort scenes by ID to ensure deterministic ordering
+    const sortedScenes = [...scenes].sort((a, b) =>
+      Number(a.id) < Number(b.id) ? -1 : Number(a.id) > Number(b.id) ? 1 : 0,
+    );
 
-        const job = await this.queueService.enqueue({
-          projectId,
-          sceneId: scene.id,
-          type: 'image',
-          provider: 'mock-image',
-          request: { prompt: scene.prompt.prompt },
-        });
+    // Process scenes in parallel with a concurrency limit
+    const results: ImageGenerationResult[] = [];
+    const errors: Array<{ sceneId: string; error: Error }> = [];
 
-        await this.queueService.setStatus(job._id?.toString() ?? '', 'running');
+    const batches: Array<typeof sortedScenes> = [];
+    for (
+      let i = 0;
+      i < sortedScenes.length;
+      i += ImageGenerationService.MAX_CONCURRENT_IMAGES
+    ) {
+      batches.push(
+        sortedScenes.slice(i, i + ImageGenerationService.MAX_CONCURRENT_IMAGES),
+      );
+    }
 
-        const imageProvider = this.registry.getImageProvider();
-        if (!imageProvider) {
-          throw new InternalServerErrorException(
-            'No image provider registered.',
+    for (const batch of batches) {
+      const batchResults = await Promise.allSettled(
+        batch.map((scene) =>
+          this.generateImageForScene(projectId, projectSlug, scene),
+        ),
+      );
+
+      for (let i = 0; i < batchResults.length; i++) {
+        const result = batchResults[i];
+        if (result.status === 'fulfilled' && result.value) {
+          results.push(result.value);
+        } else if (result.status === 'rejected') {
+          const sceneId = batch[i].id;
+          const error = result.reason as Error;
+          errors.push({ sceneId, error });
+          this.logger.error(
+            `Failed to generate image for scene ${sceneId}: ${error.message}`,
           );
+          await this.pipelineState.addLog(projectId, 'image-generation', {
+            timestamp: new Date(),
+            level: 'error',
+            message: `Failed to generate image for scene ${sceneId}: ${error.message}`,
+          });
         }
-
-        const response = await imageProvider.generateImage({
-          prompt: scene.prompt.prompt,
-          negativePrompt: scene.prompt.negativePrompt,
-          width: 768,
-          height: 1344,
-          style: scene.prompt.mood,
-        });
-
-        const existing = await this.assetService.findByProjectAndScene(
-          projectId,
-          scene.id,
-          'IMAGE',
-        );
-        if (existing) {
-          const oldGridfsId = existing.path?.replace('gridfs:', '') ?? '';
-          if (oldGridfsId) {
-            await this.gridfs.deleteFile(oldGridfsId).catch(() => {});
-          }
-          await this.assetService.delete(existing._id?.toString() ?? '');
-        }
-
-        let imageBuffer: Buffer | null = null;
-
-        if (response.imageUrl.startsWith('http')) {
-          try {
-            const res = await fetch(response.imageUrl);
-            if (res.ok) {
-              imageBuffer = Buffer.from(await res.arrayBuffer());
-            }
-          } catch (e) {
-            this.logger.warn(
-              `Failed to download image: ${(e as Error).message}`,
-            );
-          }
-        } else if (response.imageUrl.startsWith('data:image')) {
-          try {
-            const base64Data = response.imageUrl.split(',')[1];
-            imageBuffer = Buffer.from(base64Data, 'base64');
-          } catch (e) {
-            this.logger.warn(
-              `Failed to persist generated image: ${(e as Error).message}`,
-            );
-          }
-        }
-
-        if (!imageBuffer) {
-          imageBuffer = await this.generatePlaceholderImageBuffer(scene.prompt);
-        }
-
-        const gridfsFilename = `${projectSlug}/images/scene-${scene.id}.png`;
-        const gridfsId = await this.gridfs.uploadFile(
-          gridfsFilename,
-          imageBuffer,
-          {
-            projectId,
-            sceneId: scene.id,
-            provider: response.provider,
-            model: response.model,
-          },
-        );
-
-        const imagePath = `gridfs:${gridfsId}`;
-
-        const asset = await this.assetService.create({
-          projectId,
-          sceneId: scene.id,
-          type: 'IMAGE',
-          filename: response.imagePath,
-          path: imagePath,
-          url: response.imageUrl,
-          width: response.width,
-          height: response.height,
-          seed: response.seed,
-          provider: response.provider,
-          model: response.model,
-          generationTime: response.generationTime,
-          metadata: {
-            prompt: scene.prompt.prompt,
-            negativePrompt: scene.prompt.negativePrompt,
-            camera: scene.prompt.camera,
-            lighting: scene.prompt.lighting,
-            mood: scene.prompt.mood,
-            gridfsId,
-          },
-        });
-
-        await this.assetService.update(asset._id?.toString() ?? '', {
-          status: 'ready',
-        });
-        await this.queueService.setStatus(
-          job._id?.toString() ?? '',
-          'completed',
-        );
-        await this.queueService.setResponse(job._id?.toString() ?? '', {
-          assetId: asset._id?.toString() ?? '',
-          ...response,
-        });
-
-        results.push({
-          sceneId: scene.id,
-          assetId: asset._id?.toString() ?? '',
-          imageUrl: response.imageUrl,
-          imagePath,
-          provider: response.provider,
-          model: response.model,
-          generationTime: response.generationTime,
-          width: response.width,
-          height: response.height,
-          seed: response.seed,
-        });
-
-        await this.pipelineState.addLog(projectId, 'image-generation', {
-          timestamp: new Date(),
-          level: 'info',
-          message: `Image generated for scene ${scene.id} using ${response.provider}`,
-        });
-      } catch (e) {
-        const error = e as Error;
-        this.logger.error(
-          `Failed to generate image for scene ${scene.id}: ${error.message}`,
-        );
-        await this.pipelineState.addLog(projectId, 'image-generation', {
-          timestamp: new Date(),
-          level: 'error',
-          message: `Failed to generate image for scene ${scene.id}: ${error.message}`,
-        });
-        await this.pipelineState.setStatus(
-          projectId,
-          'image-generation',
-          'failed',
-        );
-        throw e;
       }
     }
+
+    if (errors.length > 0) {
+      await this.pipelineState.setStatus(
+        projectId,
+        'image-generation',
+        'failed',
+      );
+      throw errors[0].error;
+    }
+
+    // Sort results by scene ID to maintain order
+    results.sort((a, b) =>
+      Number(a.sceneId) < Number(b.sceneId)
+        ? -1
+        : Number(a.sceneId) > Number(b.sceneId)
+          ? 1
+          : 0,
+    );
 
     await this.pipelineState.setStatus(
       projectId,
@@ -240,6 +148,145 @@ export class ImageGenerationService {
     });
 
     return results;
+  }
+
+  private async generateImageForScene(
+    projectId: string,
+    projectSlug: string,
+    scene: {
+      id: string;
+      duration: number;
+      prompt: RenderPrompt;
+    },
+  ): Promise<ImageGenerationResult> {
+    await this.pipelineState.addLog(projectId, 'image-generation', {
+      timestamp: new Date(),
+      level: 'info',
+      message: `Generating image for scene ${scene.id}`,
+    });
+
+    const job = await this.queueService.enqueue({
+      projectId,
+      sceneId: scene.id,
+      type: 'image',
+      provider: 'mock-image',
+      request: { prompt: scene.prompt.prompt },
+    });
+
+    await this.queueService.setStatus(job._id?.toString() ?? '', 'running');
+
+    const imageProvider = this.registry.getImageProvider();
+    if (!imageProvider) {
+      throw new InternalServerErrorException('No image provider registered.');
+    }
+
+    const response = await imageProvider.generateImage({
+      prompt: scene.prompt.prompt,
+      negativePrompt: scene.prompt.negativePrompt,
+      width: ImageGenerationService.IMAGE_WIDTH,
+      height: ImageGenerationService.IMAGE_HEIGHT,
+      style: scene.prompt.mood,
+    });
+
+    const existing = await this.assetService.findByProjectAndScene(
+      projectId,
+      scene.id,
+      'IMAGE',
+    );
+    if (existing) {
+      const oldGridfsId = existing.path?.replace('gridfs:', '') ?? '';
+      if (oldGridfsId) {
+        await this.gridfs.deleteFile(oldGridfsId).catch(() => {});
+      }
+      await this.assetService.delete(existing._id?.toString() ?? '');
+    }
+
+    let imageBuffer: Buffer | null = null;
+
+    if (response.imageUrl.startsWith('http')) {
+      try {
+        const res = await fetch(response.imageUrl);
+        if (res.ok) {
+          imageBuffer = Buffer.from(await res.arrayBuffer());
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to download image: ${(e as Error).message}`);
+      }
+    } else if (response.imageUrl.startsWith('data:image')) {
+      try {
+        const base64Data = response.imageUrl.split(',')[1];
+        imageBuffer = Buffer.from(base64Data, 'base64');
+      } catch (e) {
+        this.logger.warn(
+          `Failed to persist generated image: ${(e as Error).message}`,
+        );
+      }
+    }
+
+    if (!imageBuffer) {
+      imageBuffer = await this.generatePlaceholderImageBuffer(scene.prompt);
+    }
+
+    const gridfsFilename = `${projectSlug}/images/scene-${scene.id}.png`;
+    const gridfsId = await this.gridfs.uploadFile(gridfsFilename, imageBuffer, {
+      projectId,
+      sceneId: scene.id,
+      provider: response.provider,
+      model: response.model,
+    });
+
+    const imagePath = `gridfs:${gridfsId}`;
+
+    const asset = await this.assetService.create({
+      projectId,
+      sceneId: scene.id,
+      type: 'IMAGE',
+      filename: response.imagePath,
+      path: imagePath,
+      url: response.imageUrl,
+      width: response.width,
+      height: response.height,
+      seed: response.seed,
+      provider: response.provider,
+      model: response.model,
+      generationTime: response.generationTime,
+      metadata: {
+        prompt: scene.prompt.prompt,
+        negativePrompt: scene.prompt.negativePrompt,
+        camera: scene.prompt.camera,
+        lighting: scene.prompt.lighting,
+        mood: scene.prompt.mood,
+        gridfsId,
+      },
+    });
+
+    await this.assetService.update(asset._id?.toString() ?? '', {
+      status: 'ready',
+    });
+    await this.queueService.setStatus(job._id?.toString() ?? '', 'completed');
+    await this.queueService.setResponse(job._id?.toString() ?? '', {
+      assetId: asset._id?.toString() ?? '',
+      ...response,
+    });
+
+    await this.pipelineState.addLog(projectId, 'image-generation', {
+      timestamp: new Date(),
+      level: 'info',
+      message: `Image generated for scene ${scene.id} using ${response.provider}`,
+    });
+
+    return {
+      sceneId: scene.id,
+      assetId: asset._id?.toString() ?? '',
+      imageUrl: response.imageUrl,
+      imagePath,
+      provider: response.provider,
+      model: response.model,
+      generationTime: response.generationTime,
+      width: response.width,
+      height: response.height,
+      seed: response.seed,
+    };
   }
 
   async regenerateImage(
@@ -271,7 +318,7 @@ export class ImageGenerationService {
   }
 
   private async generatePlaceholderImageBuffer(
-    prompt: RenderPrompt,
+    _prompt: RenderPrompt,
   ): Promise<Buffer> {
     const tempPath = `/tmp/phoenix-placeholder-${Date.now()}.png`;
 
@@ -281,7 +328,7 @@ export class ImageGenerationService {
         '-f',
         'lavfi',
         '-i',
-        `color=c=7c3aed:s=768x1344:d=1`,
+        `color=c=7c3aed:s=1080x1920:d=1`,
         '-frames:v',
         '1',
         tempPath,

@@ -16,9 +16,16 @@ export interface SubtitleOutput {
   generatedAt: string;
 }
 
+export interface VoiceLineTiming {
+  character: string;
+  text: string;
+  duration: number;
+}
+
 export interface SubtitleInput {
   scenes: SceneItem[];
   dialogues: DialogueOutput['scenes'];
+  voiceLines?: Map<number, VoiceLineTiming[]>;
 }
 
 @Injectable()
@@ -57,17 +64,36 @@ export class SubtitlePipeline implements Pipeline<
         0,
       );
 
+      // Get voice line timings for this scene if available
+      const sceneVoiceLines = input.voiceLines?.get(scene.id);
+
       let sceneCursor = elapsedSeconds;
-      for (const line of lines) {
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex];
         const subLines = this.breakIntoSubLines(line.text);
 
-        const lineWordCount = Math.max(1, line.text.split(/\s+/).length);
-        const lineProportion =
-          totalSceneWords > 0 ? lineWordCount / totalSceneWords : 1 / lines.length;
-        const lineDuration = Math.max(
-          SubtitlePipeline.MIN_CUE_DURATION,
-          scene.duration * lineProportion,
-        );
+        // Use actual voice line duration when available, otherwise estimate
+        const voiceLine = sceneVoiceLines
+          ? this.findVoiceLine(sceneVoiceLines, line, lineIndex)
+          : undefined;
+
+        let lineDuration: number;
+        if (voiceLine && voiceLine.duration > 0) {
+          lineDuration = Math.max(
+            SubtitlePipeline.MIN_CUE_DURATION,
+            voiceLine.duration,
+          );
+        } else {
+          const lineWordCount = Math.max(1, line.text.split(/\s+/).length);
+          const lineProportion =
+            totalSceneWords > 0
+              ? lineWordCount / totalSceneWords
+              : 1 / lines.length;
+          lineDuration = Math.max(
+            SubtitlePipeline.MIN_CUE_DURATION,
+            scene.duration * lineProportion,
+          );
+        }
 
         const totalSubLineWords = subLines.reduce(
           (sum, l) => sum + l.split(/\s+/).length,
@@ -105,6 +131,36 @@ export class SubtitlePipeline implements Pipeline<
     }
 
     return { cues, generatedAt: new Date().toISOString() };
+  }
+
+  /**
+   * Find the matching voice line by character name and text similarity.
+   * Falls back to index-based matching if text doesn't match exactly.
+   */
+  private findVoiceLine(
+    voiceLines: VoiceLineTiming[],
+    line: { character: string; text: string },
+    lineIndex: number,
+  ): VoiceLineTiming | undefined {
+    // Try exact match first
+    const exactMatch = voiceLines.find(
+      (vl) =>
+        vl.character === line.character &&
+        vl.text.toLowerCase() === line.text.toLowerCase(),
+    );
+    if (exactMatch) return exactMatch;
+
+    // Try character match with index fallback
+    const characterMatches = voiceLines.filter(
+      (vl) => vl.character === line.character,
+    );
+    if (characterMatches[lineIndex]) return characterMatches[lineIndex];
+
+    // Try any match by character
+    if (characterMatches.length > 0) return characterMatches[0];
+
+    // Fall back to index-based match
+    return voiceLines[lineIndex];
   }
 
   private breakIntoSubLines(text: string): string[] {

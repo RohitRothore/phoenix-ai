@@ -14,6 +14,7 @@ import { PromptOutput, RenderPrompt } from '../ai/agents/prompt/prompt.types';
 import {
   SubtitleOutput,
   SubtitlePipeline,
+  VoiceLineTiming,
   toSrt,
 } from '../ai/pipelines/subtitle.pipeline';
 import { DirectorAgent } from '../ai/agents/director/director.agent';
@@ -715,18 +716,43 @@ export class ProjectsService {
       if (audioDuration > 0) {
         return {
           ...s,
-          duration: Math.max(
-            s.duration,
-            Math.ceil(audioDuration * 10) / 10,
-          ),
+          duration: Math.max(s.duration, Math.ceil(audioDuration * 10) / 10),
         };
       }
       return s;
     });
 
+    // Read voice artifact if available to get per-line durations for accurate timing
+    const voiceArtifact = await this.mongo.getArtifact<{
+      lines: Array<{
+        sceneId: string;
+        character: string;
+        text: string;
+        duration: number;
+      }>;
+      status: string;
+    }>(project.id, 'voice');
+
+    let voiceLines: Map<number, VoiceLineTiming[]> | undefined;
+    if (voiceArtifact && voiceArtifact.status === 'ready') {
+      voiceLines = new Map<number, VoiceLineTiming[]>();
+      for (const line of voiceArtifact.lines) {
+        const sceneIdNum = Number(line.sceneId);
+        if (!voiceLines.has(sceneIdNum)) {
+          voiceLines.set(sceneIdNum, []);
+        }
+        voiceLines.get(sceneIdNum)!.push({
+          character: line.character,
+          text: line.text,
+          duration: line.duration,
+        });
+      }
+    }
+
     const output = await this.subtitlePipeline.run({
       scenes: effectiveScenes,
       dialogues: dialogues.scenes,
+      voiceLines,
     });
 
     const srtContent = toSrt(output.cues);

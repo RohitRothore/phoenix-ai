@@ -69,6 +69,11 @@ export class SceneRendererService {
     const fps = input.frameRate ?? SceneRendererService.DEFAULT_FPS;
     const results: SceneRenderResult[] = [];
 
+    // Sort scenes by ID to ensure deterministic rendering order
+    const sortedScenes = [...scenes].sort((a, b) =>
+      Number(a.id) < Number(b.id) ? -1 : Number(a.id) > Number(b.id) ? 1 : 0,
+    );
+
     const tempDir = path.join(SceneRendererService.TEMP_DIR, projectSlug);
     await fs.mkdir(tempDir, { recursive: true });
 
@@ -76,12 +81,12 @@ export class SceneRendererService {
     await this.pipelineState.addLog(projectId, 'scene-rendering', {
       timestamp: new Date(),
       level: 'info',
-      message: `Starting scene rendering for ${scenes.length} scenes`,
+      message: `Starting scene rendering for ${sortedScenes.length} scenes`,
     });
 
     const concatEntries: string[] = [];
 
-    for (const scene of scenes) {
+    for (const scene of sortedScenes) {
       try {
         await this.pipelineState.addLog(projectId, 'scene-rendering', {
           timestamp: new Date(),
