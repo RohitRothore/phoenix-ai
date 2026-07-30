@@ -704,6 +704,22 @@ export class ProjectsService {
       );
     }
 
+    const voiceArtifact = await this.mongo.getArtifact<{
+      lines: Array<{
+        sceneId: string;
+        character: string;
+        text: string;
+        duration: number;
+      }>;
+      status: string;
+    }>(project.id, 'voice');
+
+    if (!voiceArtifact || voiceArtifact.status !== 'ready') {
+      throw new ConflictException(
+        'Voice must be generated before subtitles for accurate timing.',
+      );
+    }
+
     const audioAssets = await this.assetService.listByProject(
       project.id,
       'AUDIO',
@@ -722,31 +738,17 @@ export class ProjectsService {
       return s;
     });
 
-    // Read voice artifact if available to get per-line durations for accurate timing
-    const voiceArtifact = await this.mongo.getArtifact<{
-      lines: Array<{
-        sceneId: string;
-        character: string;
-        text: string;
-        duration: number;
-      }>;
-      status: string;
-    }>(project.id, 'voice');
-
-    let voiceLines: Map<number, VoiceLineTiming[]> | undefined;
-    if (voiceArtifact && voiceArtifact.status === 'ready') {
-      voiceLines = new Map<number, VoiceLineTiming[]>();
-      for (const line of voiceArtifact.lines) {
-        const sceneIdNum = Number(line.sceneId);
-        if (!voiceLines.has(sceneIdNum)) {
-          voiceLines.set(sceneIdNum, []);
-        }
-        voiceLines.get(sceneIdNum)!.push({
-          character: line.character,
-          text: line.text,
-          duration: line.duration,
-        });
+    const voiceLines = new Map<number, VoiceLineTiming[]>();
+    for (const line of voiceArtifact.lines) {
+      const sceneIdNum = Number(line.sceneId);
+      if (!voiceLines.has(sceneIdNum)) {
+        voiceLines.set(sceneIdNum, []);
       }
+      voiceLines.get(sceneIdNum)!.push({
+        character: line.character,
+        text: line.text,
+        duration: line.duration,
+      });
     }
 
     const output = await this.subtitlePipeline.run({
@@ -839,10 +841,7 @@ export class ProjectsService {
         if (audioDuration > 0) {
           return {
             ...s,
-            duration: Math.max(
-              s.duration,
-              Math.ceil(audioDuration * 10) / 10,
-            ),
+            duration: Math.max(s.duration, Math.ceil(audioDuration * 10) / 10),
           };
         }
         return s;

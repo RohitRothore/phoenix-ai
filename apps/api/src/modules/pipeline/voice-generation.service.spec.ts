@@ -60,16 +60,19 @@ describe('VoiceGenerationService', () => {
     }).compile();
 
     service = moduleRef.get<VoiceGenerationService>(VoiceGenerationService);
+    jest.spyOn(service as any, 'parlerAvailable').mockResolvedValue(false);
   });
 
   it('should generate voice lines for all dialogues in all scenes', async () => {
     // Mock callTTS by replacing private method or using real fallback
-    jest.spyOn(service as any, 'callTTS').mockImplementation(async (text: string) => {
-      return {
-        buffer: Buffer.from('mock-mp3-data'),
-        duration: 2.0,
-      };
-    });
+    jest
+      .spyOn(service as any, 'callTTS')
+      .mockImplementation(async (text: string) => {
+        return {
+          buffer: Buffer.from('mock-mp3-data'),
+          duration: 2.0,
+        };
+      });
 
     jest.spyOn(service as any, 'getAudioDuration').mockResolvedValue(2.25);
 
