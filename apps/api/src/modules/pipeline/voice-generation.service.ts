@@ -71,7 +71,6 @@ export class VoiceGenerationService {
 
   private readonly hindiMaleVoices: GenderedVoice[] = [
     { voice: 'hi-IN-MadhurNeural', gender: 'male' },
-    { voice: 'hi-IN-SureshNeural', gender: 'male' },
   ];
 
   private readonly hindiFemaleVoices: GenderedVoice[] = [
