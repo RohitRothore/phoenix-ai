@@ -5,20 +5,14 @@ import {
 
 import { BaseImageProvider } from '../base/BaseImageProvider';
 
-/**
- * Pollinations Image Provider (Phase 2)
- *
- * Uses the free Pollinations.AI image generation API.
- * No API key required — the service is publicly accessible.
- *
- * When the call fails, callers should fall back to MockImageProvider.
- */
+const MAX_PROMPT_LENGTH = 1000;
+
 export class PollinationsImageProvider extends BaseImageProvider {
   readonly provider = 'pollinations-image';
 
-  readonly model = 'gptimage';
+  readonly model = 'flux';
 
-  private readonly baseUrl = 'https://image.pollinations.ai/p';
+  private readonly baseUrl = 'https://image.pollinations.ai/';
 
   constructor() {
     super();
@@ -32,17 +26,24 @@ export class PollinationsImageProvider extends BaseImageProvider {
     const height = request.height ?? 1024;
     const seed = request.seed ?? Math.floor(Math.random() * 2_147_483_647);
 
+    let prompt = request.prompt;
+    if (request.negativePrompt) {
+      prompt = `${prompt} --no ${request.negativePrompt}`;
+    }
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      prompt = prompt.slice(0, MAX_PROMPT_LENGTH);
+    }
+
     const params = new URLSearchParams({
-      prompt: request.prompt,
       width: String(width),
       height: String(height),
       seed: String(seed),
-      ...(request.negativePrompt
-        ? { negative_prompt: request.negativePrompt }
-        : {}),
+      nologo: 'true',
+      model: this.model,
     });
 
-    const imageUrl = `${this.baseUrl}?${params.toString()}`;
+    const encodedPrompt = encodeURIComponent(prompt);
+    const imageUrl = `${this.baseUrl}prompt/${encodedPrompt}?${params.toString()}`;
     const imagePath = `images/pollinations-${Date.now()}-${seed}.png`;
 
     return {

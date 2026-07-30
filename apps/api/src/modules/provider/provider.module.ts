@@ -36,18 +36,11 @@ export const PROVIDER_REGISTRY = 'PROVIDER_REGISTRY';
         // ─── Image Providers ─────────────────────────────────────────────
         // Mock mode: if no image API key exists, automatically use MockImageProvider
         // so the full application flow can complete without paid APIs.
-        // if (geminiApiKey) {
-        //   registry.register(new GeminiImageProvider(geminiApiKey));
-        // }
-
-        if (openAiApiKey) {
-          registry.register(new OpenAIImageProvider(openAiApiKey));
-        }
 
         // HuggingFace Stability AI SD3
-        if (huggingFaceApiKey) {
-          registry.register(new HuggingFaceImageProvider(huggingFaceApiKey));
-        }
+        // if (huggingFaceApiKey) {
+        //   registry.register(new HuggingFaceImageProvider(huggingFaceApiKey));
+        // }
 
         // Pollinations is free and requires no API key
         registry.register(new PollinationsImageProvider());
