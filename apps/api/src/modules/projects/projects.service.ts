@@ -704,6 +704,9 @@ export class ProjectsService {
       );
     }
 
+    // Voice is optional — subtitles can be generated before or after voice.
+    // When voice is available, its timing is used for accurate subtitle cues.
+    // When unavailable, the subtitle pipeline falls back to estimated durations.
     const voiceArtifact = await this.mongo.getArtifact<{
       lines: Array<{
         sceneId: string;
@@ -713,12 +716,6 @@ export class ProjectsService {
       }>;
       status: string;
     }>(project.id, 'voice');
-
-    if (!voiceArtifact || voiceArtifact.status !== 'ready') {
-      throw new ConflictException(
-        'Voice must be generated before subtitles for accurate timing.',
-      );
-    }
 
     const audioAssets = await this.assetService.listByProject(
       project.id,
@@ -739,16 +736,18 @@ export class ProjectsService {
     });
 
     const voiceLines = new Map<number, VoiceLineTiming[]>();
-    for (const line of voiceArtifact.lines) {
-      const sceneIdNum = Number(line.sceneId);
-      if (!voiceLines.has(sceneIdNum)) {
-        voiceLines.set(sceneIdNum, []);
+    if (voiceArtifact && voiceArtifact.status === 'ready') {
+      for (const line of voiceArtifact.lines) {
+        const sceneIdNum = Number(line.sceneId);
+        if (!voiceLines.has(sceneIdNum)) {
+          voiceLines.set(sceneIdNum, []);
+        }
+        voiceLines.get(sceneIdNum)!.push({
+          character: line.character,
+          text: line.text,
+          duration: line.duration,
+        });
       }
-      voiceLines.get(sceneIdNum)!.push({
-        character: line.character,
-        text: line.text,
-        duration: line.duration,
-      });
     }
 
     const output = await this.subtitlePipeline.run({

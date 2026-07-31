@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Film,
@@ -16,6 +16,10 @@ import {
   ChevronUp,
   Clock,
   Hash,
+  ListVideo,
+  Volume2,
+  FileText,
+  Sparkles,
 } from "lucide-react";
 
 import type { Step } from "../ProjectWorkspace";
@@ -33,6 +37,8 @@ import type {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api";
+
+const POLL_INTERVAL_MS = 3000;
 
 export interface ProduceStepProps {
   projectSlug: string;
@@ -70,43 +76,141 @@ function getStageStatus(
   return stages?.find((s) => s.stage === stage)?.status ?? "pending";
 }
 
-function StageBadge({ status }: { status: PipelineStageInfo["status"] }) {
+function getStageInfo(
+  stages: PipelineStageInfo[] | undefined,
+  stage: string,
+): PipelineStageInfo | undefined {
+  return stages?.find((s) => s.stage === stage);
+}
+
+// ─── Progress Bar Component ─────────────────────────────────────────────────
+
+function ProgressBar({
+  current,
+  total,
+  color = "emerald",
+}: {
+  current: number;
+  total: number;
+  color?: "emerald" | "amber" | "blue" | "violet";
+}) {
+  const pct =
+    total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+  const colorMap = {
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-500",
+    blue: "bg-blue-500",
+    violet: "bg-violet-500",
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ease-out ${colorMap[color]}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-[10px] font-medium text-zinc-400 shrink-0 tabular-nums">
+        {current}/{total}
+      </span>
+    </div>
+  );
+}
+
+// ─── Elapsed Time ───────────────────────────────────────────────────────────
+
+function ElapsedTime({ startedAt }: { startedAt?: string }) {
+  const [elapsed, setElapsed] = useState("");
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const update = () => {
+      const diff = Date.now() - new Date(startedAt).getTime();
+      const secs = Math.floor(diff / 1000);
+      if (secs < 60) setElapsed(`${secs}s`);
+      else setElapsed(`${Math.floor(secs / 60)}m ${secs % 60}s`);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  if (!startedAt || !elapsed) return null;
+  return (
+    <span className="flex items-center gap-1 text-[10px] text-zinc-500">
+      <Clock className="size-2.5" />
+      {elapsed}
+    </span>
+  );
+}
+
+// ─── Stage Badge ────────────────────────────────────────────────────────────
+
+function StageBadge({
+  status,
+  progress,
+  total,
+  startedAt,
+}: {
+  status: PipelineStageInfo["status"];
+  progress?: number;
+  total?: number;
+  startedAt?: string;
+}) {
   const config: Record<
     PipelineStageInfo["status"],
-    { label: string; cls: string }
+    { label: string; cls: string; icon: React.ReactNode }
   > = {
     pending: {
       label: "Pending",
       cls: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+      icon: null,
     },
     queued: {
       label: "Queued",
       cls: "border-blue-500/20 bg-blue-500/10 text-blue-400",
+      icon: <Loader2 className="size-2.5 animate-spin" />,
     },
     running: {
       label: "Running",
       cls: "border-amber-500/20 bg-amber-500/10 text-amber-400",
+      icon: <Loader2 className="size-2.5 animate-spin" />,
     },
     completed: {
       label: "Done",
       cls: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+      icon: <CheckCircle2 className="size-2.5" />,
     },
     failed: {
       label: "Failed",
       cls: "border-rose-500/20 bg-rose-500/10 text-rose-400",
+      icon: <AlertTriangle className="size-2.5" />,
     },
     cancelled: {
       label: "Cancelled",
       cls: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+      icon: null,
     },
   };
-  const { label, cls } = config[status];
+  const { label, cls, icon } = config[status];
+
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${cls}`}>
-      {label}
-    </span>
+    <div className="flex items-center gap-1.5">
+      <span
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${cls}`}
+      >
+        {icon}
+        {label}
+      </span>
+      {progress !== undefined && total !== undefined && total > 0 && (
+        <ProgressBar current={progress} total={total} />
+      )}
+      <ElapsedTime startedAt={startedAt} />
+    </div>
   );
 }
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export function ProduceStep({
   projectSlug,
@@ -118,6 +222,7 @@ export function ProduceStep({
   assets,
   pipelineStages,
   loading,
+  error,
   setError,
   onRenderProject,
   onRenderScene,
@@ -133,17 +238,57 @@ export function ProduceStep({
     compose: false,
   });
 
+  // ─── Auto-polling for real-time pipeline updates ──────────────────────────
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isAnyStageRunning = useCallback(() => {
+    if (!pipelineStages) return false;
+    return pipelineStages.some(
+      (s) => s.status === "running" || s.status === "queued",
+    );
+  }, [pipelineStages]);
+
+  useEffect(() => {
+    if (isAnyStageRunning()) {
+      pollRef.current = setInterval(onRefreshPipeline, POLL_INTERVAL_MS);
+    } else {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [isAnyStageRunning, onRefreshPipeline]);
+
+  // ─── Derived state ───────────────────────────────────────────────────────
+
+  const totalScenes = scenes?.scenes?.length ?? 0;
+  const renderedScenes =
+    assets?.filter((a: Asset) => a.type === "VIDEO" && a.status === "ready")
+      .length ?? 0;
+  const totalVoiceLines = voiceResult?.lines?.length ?? 0;
+  const readyVoiceLines =
+    voiceResult?.lines?.filter((l) => l.status === "ready").length ?? 0;
+  const errorVoiceLines =
+    voiceResult?.lines?.filter((l) => l.status === "error").length ?? 0;
+
   const hasImages = Boolean(
-    assets && assets.filter((a) => a.type === "IMAGE" && a.status === "ready").length > 0,
+    assets &&
+    assets.filter((a: Asset) => a.type === "IMAGE" && a.status === "ready")
+      .length > 0,
   );
-  const hasRenderedClips = Boolean(
-    renderResults && renderResults.length > 0,
-  );
+  const hasRenderedClips = renderedScenes > 0;
   const hasVoice = Boolean(voiceResult && voiceResult.lines.length > 0);
   const hasSubtitles = Boolean(subtitles && subtitles.status === "ready");
   const hasComposed = Boolean(compositionResult);
 
-  const anyLoading = loading.produce || Object.values(produceLoading).some(Boolean);
+  const anyLoading =
+    loading.produce || Object.values(produceLoading).some(Boolean);
 
   const withLoading = async <T,>(
     key: keyof ProduceLoading,
@@ -165,22 +310,19 @@ export function ProduceStep({
     }
   };
 
-  const handleRender = () =>
-    withLoading("render", onRenderProject);
-
-  const handleVoice = () =>
-    withLoading("voice", onGenerateVoice);
-
-  const handleSubtitles = () =>
-    withLoading("subtitles", onGenerateSubtitles);
-
-  const handleCompose = () =>
-    withLoading("compose", onComposeVideo);
+  const handleRender = () => withLoading("render", onRenderProject);
+  const handleVoice = () => withLoading("voice", onGenerateVoice);
+  const handleSubtitles = () => withLoading("subtitles", onGenerateSubtitles);
+  const handleCompose = () => withLoading("compose", onComposeVideo);
 
   const renderStage = getStageStatus(pipelineStages, "scene-rendering");
+  const renderStageInfo = getStageInfo(pipelineStages, "scene-rendering");
   const voiceStage = getStageStatus(pipelineStages, "voice-generation");
+  const voiceStageInfo = getStageInfo(pipelineStages, "voice-generation");
   const subtitleStage = getStageStatus(pipelineStages, "subtitle-generation");
+  const subtitleStageInfo = getStageInfo(pipelineStages, "subtitle-generation");
   const exportStage = getStageStatus(pipelineStages, "export");
+  const exportStageInfo = getStageInfo(pipelineStages, "export");
 
   return (
     <div className="grid gap-6 md:grid-cols-3">
@@ -201,6 +343,7 @@ export function ProduceStep({
             <ProduceAction
               step={1}
               label="Render Scenes"
+              icon={<ListVideo className="size-4" />}
               stageStatus={renderStage}
               isDone={hasRenderedClips}
               isLoading={produceLoading.render}
@@ -208,27 +351,18 @@ export function ProduceStep({
               loadingText="Rendering..."
               doneLabel="Re-render All"
               defaultLabel="Render All Scenes"
+              progress={totalScenes > 0 ? renderedScenes : undefined}
+              total={totalScenes > 0 ? totalScenes : undefined}
+              stageError={renderStageInfo?.errorMessage}
+              startedAt={renderStageInfo?.startedAt}
               onAction={handleRender}
             />
 
-            {/* Step 2: Generate Voice */}
+            {/* Step 2: Generate Subtitles */}
             <ProduceAction
               step={2}
-              label="Voice (TTS)"
-              stageStatus={voiceStage}
-              isDone={hasVoice}
-              isLoading={produceLoading.voice}
-              disabled={anyLoading || !hasRenderedClips}
-              loadingText="Generating Voice..."
-              doneLabel="Regenerate Voice"
-              defaultLabel="Generate Voice"
-              onAction={handleVoice}
-            />
-
-            {/* Step 3: Generate Subtitles */}
-            <ProduceAction
-              step={3}
               label="Subtitles"
+              icon={<FileText className="size-4" />}
               stageStatus={subtitleStage}
               isDone={hasSubtitles}
               isLoading={produceLoading.subtitles}
@@ -236,13 +370,37 @@ export function ProduceStep({
               loadingText="Generating..."
               doneLabel="Regenerate Subtitles"
               defaultLabel="Generate Subtitles"
+              stageError={subtitleStageInfo?.errorMessage}
+              startedAt={subtitleStageInfo?.startedAt}
               onAction={handleSubtitles}
+            />
+
+            {/* Step 3: Generate Voice */}
+            <ProduceAction
+              step={3}
+              label="Voice (TTS)"
+              icon={<Volume2 className="size-4" />}
+              stageStatus={voiceStage}
+              isDone={hasVoice}
+              isLoading={produceLoading.voice}
+              disabled={anyLoading || !hasRenderedClips}
+              loadingText="Generating Voice..."
+              doneLabel="Regenerate Voice"
+              defaultLabel="Generate Voice"
+              progress={totalVoiceLines > 0 ? readyVoiceLines : undefined}
+              total={totalVoiceLines > 0 ? totalVoiceLines : undefined}
+              stageError={
+                getStageInfo(pipelineStages, "voice-generation")?.errorMessage
+              }
+              startedAt={voiceStageInfo?.startedAt}
+              onAction={handleVoice}
             />
 
             {/* Step 4: Compose Final Video */}
             <ProduceAction
               step={4}
               label="Compose Final"
+              icon={<Sparkles className="size-4" />}
               stageStatus={exportStage}
               isDone={hasComposed}
               isLoading={produceLoading.compose}
@@ -250,6 +408,8 @@ export function ProduceStep({
               loadingText="Composing..."
               doneLabel="Re-compose"
               defaultLabel="Compose Final Video"
+              stageError={exportStageInfo?.errorMessage}
+              startedAt={exportStageInfo?.startedAt}
               onAction={handleCompose}
               accent
             />
@@ -273,8 +433,10 @@ export function ProduceStep({
               className="w-full border-[#27272A] text-zinc-300 hover:bg-[#1c1c1f] font-semibold py-3"
               disabled={anyLoading}
             >
-              <RefreshCw className="mr-2 size-4" />
-              Refresh Status
+              <RefreshCw
+                className={`mr-2 size-4 ${isAnyStageRunning() ? "animate-spin text-amber-400" : ""}`}
+              />
+              {isAnyStageRunning() ? "Auto-refreshing..." : "Refresh Status"}
             </Button>
           </div>
         </div>
@@ -292,6 +454,7 @@ export function ProduceStep({
           assets={assets}
           loading={produceLoading}
           parentLoading={loading}
+          pipelineStages={pipelineStages}
           onRenderScene={onRenderScene}
         />
       </div>
@@ -299,11 +462,12 @@ export function ProduceStep({
   );
 }
 
-// ─── Produce Action Button ────────────────────────────────────────────────
+// ─── Produce Action Button ──────────────────────────────────────────────────
 
 function ProduceAction({
   step,
   label,
+  icon,
   stageStatus,
   isDone,
   isLoading,
@@ -311,11 +475,16 @@ function ProduceAction({
   loadingText,
   doneLabel,
   defaultLabel,
+  progress,
+  total,
+  stageError,
+  startedAt,
   onAction,
   accent,
 }: {
   step: number;
   label: string;
+  icon: React.ReactNode;
   stageStatus: PipelineStageInfo["status"];
   isDone: boolean;
   isLoading: boolean;
@@ -323,6 +492,10 @@ function ProduceAction({
   loadingText: string;
   doneLabel: string;
   defaultLabel: string;
+  progress?: number;
+  total?: number;
+  stageError?: string;
+  startedAt?: string;
   onAction: () => void;
   accent?: boolean;
 }) {
@@ -332,6 +505,8 @@ function ProduceAction({
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
           {isDone ? (
             <CheckCircle2 className="size-3.5 text-emerald-400" />
+          ) : stageStatus === "running" || stageStatus === "queued" ? (
+            <Loader2 className="size-3.5 animate-spin text-amber-400" />
           ) : (
             <span className="flex size-3.5 items-center justify-center rounded-full border border-zinc-600 text-[8px] text-zinc-500">
               {step}
@@ -339,7 +514,12 @@ function ProduceAction({
           )}
           {label}
         </div>
-        <StageBadge status={stageStatus} />
+        <StageBadge
+          status={stageStatus}
+          progress={progress}
+          total={total}
+          startedAt={startedAt}
+        />
       </div>
       <Button
         onClick={onAction}
@@ -365,24 +545,24 @@ function ProduceAction({
           </>
         ) : (
           <>
-            {accent ? (
-              <Film className="mr-2 size-4" />
-            ) : step === 2 ? (
-              <Mic className="mr-2 size-4" />
-            ) : step === 3 ? (
-              <Subtitles className="mr-2 size-4" />
-            ) : (
-              <Play className="mr-2 size-4" />
-            )}
+            {icon}
             {defaultLabel}
           </>
         )}
       </Button>
+
+      {/* Inline stage error */}
+      {stageError && stageStatus === "failed" && (
+        <div className="flex items-start gap-1.5 rounded-lg border border-rose-900/30 bg-rose-950/20 px-3 py-2 text-[11px] text-rose-400">
+          <AlertTriangle className="size-3 shrink-0 mt-0.5" />
+          <span>{stageError}</span>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Results View ─────────────────────────────────────────────────────────
+// ─── Results View ───────────────────────────────────────────────────────────
 
 function ProduceResultsView({
   projectSlug,
@@ -394,6 +574,7 @@ function ProduceResultsView({
   assets,
   loading,
   parentLoading,
+  pipelineStages,
   onRenderScene,
 }: {
   projectSlug: string;
@@ -405,6 +586,7 @@ function ProduceResultsView({
   assets: Asset[] | null;
   loading: ProduceLoading;
   parentLoading: Record<Step, boolean>;
+  pipelineStages?: PipelineStageInfo[];
   onRenderScene: (sceneId: string) => Promise<void>;
 }) {
   const anyLoading =
@@ -418,7 +600,7 @@ function ProduceResultsView({
           Production Pending
         </h3>
         <p className="max-w-sm text-sm text-zinc-500">
-          Generate images first, then render scenes, add voice, subtitles, and
+          Generate images first, then render scenes, add subtitles, voice, and
           compose the final video.
         </p>
       </div>
@@ -434,9 +616,15 @@ function ProduceResultsView({
           scenes={scenes}
           renderResults={renderResults}
           assets={assets}
+          pipelineStages={pipelineStages}
           loading={anyLoading}
           onRenderScene={onRenderScene}
         />
+      )}
+
+      {/* Subtitles */}
+      {subtitles && subtitles.status === "ready" && (
+        <SubtitlesSection subtitles={subtitles} />
       )}
 
       {/* Voice Results */}
@@ -444,12 +632,8 @@ function ProduceResultsView({
         <VoiceSection
           projectSlug={projectSlug}
           voiceResult={voiceResult}
+          pipelineStages={pipelineStages}
         />
-      )}
-
-      {/* Subtitles */}
-      {subtitles && subtitles.status === "ready" && (
-        <SubtitlesSection subtitles={subtitles} />
       )}
 
       {/* Composition Result */}
@@ -463,13 +647,14 @@ function ProduceResultsView({
   );
 }
 
-// ─── Scene Clips Section ──────────────────────────────────────────────────
+// ─── Scene Clips Section ────────────────────────────────────────────────────
 
 function SceneClipsSection({
   projectSlug,
   scenes,
   renderResults,
   assets,
+  pipelineStages,
   loading,
   onRenderScene,
 }: {
@@ -477,20 +662,55 @@ function SceneClipsSection({
   scenes: Scenes | null;
   renderResults: SceneRenderResult[];
   assets: Asset[] | null;
+  pipelineStages?: PipelineStageInfo[];
   loading: boolean;
   onRenderScene: (sceneId: string) => Promise<void>;
 }) {
+  const totalScenes = scenes?.scenes?.length ?? renderResults.length;
+  const readyVideos =
+    assets?.filter((a) => a.type === "VIDEO" && a.status === "ready").length ??
+    renderResults.length;
+  const failedVideos =
+    assets?.filter((a) => a.type === "VIDEO" && a.status === "failed").length ??
+    0;
+  const renderStage = getStageInfo(pipelineStages, "scene-rendering");
+  const isRunning =
+    renderStage?.status === "running" || renderStage?.status === "queued";
+
   return (
     <>
-      <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3 text-sm text-zinc-400">
-        {renderResults.length} scene clips rendered
-        {renderResults[0] && (
-          <span>
-            {" "}&middot; {renderResults[0].width}&times;{renderResults[0].height}{" "}
-            &middot; {renderResults[0].fps} FPS
-          </span>
-        )}
+      {/* Summary bar */}
+      <div className="rounded-xl border border-[#27272A] bg-[#18181B] px-4 py-3">
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center gap-3 text-zinc-400">
+            <ListVideo className="size-4 text-[#A78BFA]" />
+            <span>
+              {readyVideos} of {totalScenes} scene clips rendered
+            </span>
+            {failedVideos > 0 && (
+              <span className="text-rose-400">
+                &middot; {failedVideos} failed
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {isRunning && (
+              <span className="flex items-center gap-1 text-xs text-amber-400">
+                <Loader2 className="size-3 animate-spin" />
+                Rendering...
+              </span>
+            )}
+            <StageBadge
+              status={renderStage?.status ?? "pending"}
+              progress={readyVideos}
+              total={totalScenes}
+              startedAt={renderStage?.startedAt}
+            />
+          </div>
+        </div>
+        <ProgressBar current={readyVideos} total={totalScenes} />
       </div>
+
       {renderResults.map((result) => {
         const scene = scenes?.scenes.find(
           (s) => String(s.id) === result.sceneId,
@@ -498,10 +718,17 @@ function SceneClipsSection({
         const videoAsset = assets?.find(
           (a) => a.sceneId === result.sceneId && a.type === "VIDEO",
         );
+        const isFailed = videoAsset?.status === "failed";
+        const isGenerating = videoAsset?.status === "generating";
+
         return (
           <div
             key={result.sceneId}
-            className="rounded-2xl border border-[#27272A] bg-[#111111] p-5 space-y-4"
+            className={`rounded-2xl border p-5 space-y-4 ${
+              isFailed
+                ? "border-rose-500/20 bg-rose-950/10"
+                : "border-[#27272A] bg-[#111111]"
+            }`}
           >
             <div className="flex items-center justify-between border-b border-[#27272A]/50 pb-3">
               <div className="flex items-center gap-3">
@@ -514,12 +741,23 @@ function SceneClipsSection({
               </div>
               <span
                 className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                  videoAsset?.status === "ready"
-                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                    : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                  isFailed
+                    ? "border-rose-500/20 bg-rose-500/10 text-rose-400"
+                    : isGenerating
+                      ? "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                      : videoAsset?.status === "ready"
+                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                        : "border-zinc-500/20 bg-zinc-500/10 text-zinc-400"
                 }`}
               >
-                {videoAsset?.status ?? "pending"}
+                {isGenerating ? (
+                  <span className="flex items-center gap-1">
+                    <Loader2 className="size-2.5 animate-spin" />
+                    Rendering
+                  </span>
+                ) : (
+                  (videoAsset?.status ?? "pending")
+                )}
               </span>
             </div>
 
@@ -531,9 +769,21 @@ function SceneClipsSection({
                     className="w-full rounded-xl border border-[#27272A] object-cover aspect-video bg-[#18181B]"
                     controls
                   />
+                ) : isFailed ? (
+                  <div className="flex aspect-video w-full flex-col items-center justify-center rounded-xl border border-rose-500/20 bg-rose-950/20 text-xs text-rose-400 gap-1">
+                    <AlertTriangle className="size-4" />
+                    <span>Render failed</span>
+                  </div>
                 ) : (
                   <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-[#27272A] bg-[#18181B] text-xs text-zinc-500">
-                    No video
+                    {isGenerating ? (
+                      <span className="flex items-center gap-1">
+                        <Loader2 className="size-3 animate-spin" />
+                        Rendering...
+                      </span>
+                    ) : (
+                      "No video"
+                    )}
                   </div>
                 )}
               </div>
@@ -541,9 +791,18 @@ function SceneClipsSection({
               <div className="sm:col-span-2 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-3 text-xs">
                   <MetaField label="Duration" value={`${result.duration}s`} />
-                  <MetaField label="Resolution" value={`${result.width}×${result.height}`} />
+                  <MetaField
+                    label="Resolution"
+                    value={`${result.width}×${result.height}`}
+                  />
                   <MetaField label="FPS" value={String(result.fps)} />
                 </div>
+
+                {isFailed && videoAsset?.metadata?.errorMessage != null && (
+                  <div className="rounded-lg border border-rose-900/30 bg-rose-950/20 px-3 py-2 text-[11px] text-rose-400">
+                    {String(videoAsset.metadata.errorMessage as string)}
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-2">
                   <Button
@@ -566,21 +825,23 @@ function SceneClipsSection({
   );
 }
 
-// ─── Voice Section ────────────────────────────────────────────────────────
+// ─── Voice Section ──────────────────────────────────────────────────────────
 
 function VoiceSection({
   projectSlug,
   voiceResult,
+  pipelineStages,
 }: {
   projectSlug: string;
   voiceResult: VoiceGenerationResult;
+  pipelineStages?: PipelineStageInfo[];
 }) {
   const [expanded, setExpanded] = useState(true);
+  const voiceStage = getStageInfo(pipelineStages, "voice-generation");
+  const isRunning =
+    voiceStage?.status === "running" || voiceStage?.status === "queued";
 
-  const sceneGroups = new Map<
-    string,
-    typeof voiceResult.lines
-  >();
+  const sceneGroups = new Map<string, typeof voiceResult.lines>();
   for (const line of voiceResult.lines) {
     const existing = sceneGroups.get(line.sceneId) ?? [];
     existing.push(line);
@@ -593,6 +854,7 @@ function VoiceSection({
   const errorCount = voiceResult.lines.filter(
     (l) => l.status === "error",
   ).length;
+  const totalCount = voiceResult.lines.length;
 
   return (
     <div className="rounded-2xl border border-[#27272A] bg-[#111111] overflow-hidden">
@@ -604,7 +866,8 @@ function VoiceSection({
           <Mic className="size-4 text-[#A78BFA]" />
           <h4 className="font-bold text-white">Voice Generation</h4>
           <span className="text-xs text-zinc-400">
-            {readyCount} lines &middot; {voiceResult.totalDuration.toFixed(1)}s total
+            {readyCount}/{totalCount} lines &middot;{" "}
+            {voiceResult.totalDuration.toFixed(1)}s total
             {errorCount > 0 && (
               <span className="ml-2 text-rose-400">
                 &middot; {errorCount} failed
@@ -612,15 +875,34 @@ function VoiceSection({
             )}
           </span>
         </div>
-        {expanded ? (
-          <ChevronUp className="size-4 text-zinc-500" />
-        ) : (
-          <ChevronDown className="size-4 text-zinc-500" />
-        )}
+        <div className="flex items-center gap-2">
+          {isRunning && (
+            <span className="flex items-center gap-1 text-xs text-amber-400">
+              <Loader2 className="size-3 animate-spin" />
+              Generating...
+            </span>
+          )}
+          {expanded ? (
+            <ChevronUp className="size-4 text-zinc-500" />
+          ) : (
+            <ChevronDown className="size-4 text-zinc-500" />
+          )}
+        </div>
       </button>
 
       {expanded && (
         <div className="border-t border-[#27272A] px-5 pb-5 space-y-4">
+          {/* Progress bar for voice generation */}
+          {isRunning && totalCount > 0 && (
+            <div className="pt-3">
+              <ProgressBar
+                current={readyCount}
+                total={totalCount}
+                color="amber"
+              />
+            </div>
+          )}
+
           {Array.from(sceneGroups.entries()).map(([sceneId, lines]) => (
             <div key={sceneId} className="space-y-2 pt-3">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
@@ -682,13 +964,9 @@ function VoiceSection({
   );
 }
 
-// ─── Subtitles Section ────────────────────────────────────────────────────
+// ─── Subtitles Section ──────────────────────────────────────────────────────
 
-function SubtitlesSection({
-  subtitles,
-}: {
-  subtitles: SubtitlesType;
-}) {
+function SubtitlesSection({ subtitles }: { subtitles: SubtitlesType }) {
   const [expanded, setExpanded] = useState(true);
   const [showSrt, setShowSrt] = useState(false);
 
@@ -759,7 +1037,7 @@ function SubtitlesSection({
   );
 }
 
-// ─── Composition Section ──────────────────────────────────────────────────
+// ─── Composition Section ────────────────────────────────────────────────────
 
 function CompositionSection({
   projectSlug,
@@ -777,8 +1055,14 @@ function CompositionSection({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <MetaField label="Duration" value={`${compositionResult.duration}s`} />
-          <MetaField label="Exported" value={new Date(compositionResult.exportedAt).toLocaleDateString()} />
+          <MetaField
+            label="Duration"
+            value={`${compositionResult.duration}s`}
+          />
+          <MetaField
+            label="Exported"
+            value={new Date(compositionResult.exportedAt).toLocaleDateString()}
+          />
           <MetaField label="Format" value="MP4 (H.264)" />
         </div>
 
@@ -795,15 +1079,9 @@ function CompositionSection({
   );
 }
 
-// ─── Shared Components ────────────────────────────────────────────────────
+// ─── Shared Components ──────────────────────────────────────────────────────
 
-function MetaField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function MetaField({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
