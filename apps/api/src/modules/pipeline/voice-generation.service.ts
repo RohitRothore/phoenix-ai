@@ -1,4 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
@@ -222,6 +226,25 @@ export class VoiceGenerationService {
       totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
     } finally {
       await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    const failedLines = results.filter((line) => line.status === 'error');
+    if (failedLines.length > 0) {
+      const failedSceneIds = [
+        ...new Set(failedLines.map((line) => line.sceneId)),
+      ];
+      const message = `Voice generation failed for ${failedLines.length} line(s) in scene(s): ${failedSceneIds.join(', ')}.`;
+      await this.pipelineState.setStatus(
+        projectId,
+        'voice-generation',
+        'failed',
+      );
+      await this.pipelineState.addLog(projectId, 'voice-generation', {
+        timestamp: new Date(),
+        level: 'error',
+        message,
+      });
+      throw new InternalServerErrorException(message);
     }
 
     await this.pipelineState.setStatus(

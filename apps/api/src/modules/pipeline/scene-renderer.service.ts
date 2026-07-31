@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -86,6 +86,15 @@ export class SceneRendererService {
 
     const concatEntries: string[] = [];
 
+    const missingImages = sortedScenes
+      .filter((scene) => !scene.imagePath?.trim())
+      .map((scene) => scene.id);
+    if (missingImages.length > 0) {
+      throw new ConflictException(
+        `Cannot render without images for scene(s): ${missingImages.join(', ')}.`,
+      );
+    }
+
     for (const [sceneIndex, scene] of sortedScenes.entries()) {
       try {
         await this.pipelineState.addLog(projectId, 'scene-rendering', {
@@ -100,6 +109,9 @@ export class SceneRendererService {
         const imageGridfsId = scene.imagePath?.replace('gridfs:', '') ?? '';
         if (imageGridfsId) {
           const imageData = await this.gridfs.downloadFile(imageGridfsId);
+          if (!imageData?.length) {
+            throw new Error(`Image data for scene ${scene.id} is empty.`);
+          }
           const tempImagePath = path.join(tempDir, `image-${scene.id}.png`);
           await fs.writeFile(tempImagePath, imageData);
           absImagePath = tempImagePath;

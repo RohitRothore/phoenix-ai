@@ -122,9 +122,12 @@ export class CompositionService {
           clipData = await fs.readFile(absPath);
         }
 
-        if (clipData) {
-          await fs.writeFile(clipFile, clipData);
+        if (!clipData?.length) {
+          throw new Error(
+            `Rendered video data for scene ${scene.id} could not be loaded. Re-render that scene before composing.`,
+          );
         }
+        await fs.writeFile(clipFile, clipData);
 
         // Determine the effective scene duration:
         // use the max of scene duration, video asset duration, and audio duration
@@ -433,28 +436,7 @@ export class CompositionService {
     outputPath: string,
     targetDuration: number,
   ): Promise<void> {
-    // Check if the input file exists
-    try {
-      await fs.access(inputPath);
-    } catch {
-      // If input doesn't exist, create a black video of the target duration
-      await this.ffmpeg.run(
-        [
-          '-y',
-          '-f',
-          'lavfi',
-          '-i',
-          `color=c=black:s=1080x1920:d=${targetDuration}:r=30`,
-          '-c:v',
-          'libx264',
-          '-pix_fmt',
-          'yuv420p',
-          outputPath,
-        ],
-        `generate black placeholder video ${targetDuration}s`,
-      );
-      return;
-    }
+    await fs.access(inputPath);
 
     // Get the actual video duration
     let actualDuration = 0;

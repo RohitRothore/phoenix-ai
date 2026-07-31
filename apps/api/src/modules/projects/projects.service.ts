@@ -704,9 +704,9 @@ export class ProjectsService {
       );
     }
 
-    // Voice is optional — subtitles can be generated before or after voice.
-    // When voice is available, its timing is used for accurate subtitle cues.
-    // When unavailable, the subtitle pipeline falls back to estimated durations.
+    // Captions must be timed from the generated voice, never word-count
+    // estimates.  This keeps the subtitle timeline identical to the final
+    // scene audio timeline.
     const voiceArtifact = await this.mongo.getArtifact<{
       lines: Array<{
         sceneId: string;
@@ -721,6 +721,23 @@ export class ProjectsService {
       project.id,
       'AUDIO',
     );
+    const missingAudio = scenes.scenes
+      .filter(
+        (s) =>
+          !audioAssets.some(
+            (asset) =>
+              String(asset.sceneId) === String(s.id) &&
+              asset.status === 'ready' &&
+              (asset.duration ?? 0) > 0,
+          ),
+      )
+      .map((s) => s.id);
+    if (missingAudio.length > 0) {
+      throw new ConflictException(
+        `Generate voice for every scene before subtitles. Missing scene(s): ${missingAudio.join(', ')}.`,
+      );
+    }
+
     const effectiveScenes = scenes.scenes.map((s) => {
       const audioAsset = audioAssets.find(
         (a) => String(a.sceneId) === String(s.id),
@@ -748,6 +765,15 @@ export class ProjectsService {
           duration: line.duration,
         });
       }
+    }
+
+    const missingVoiceTimings = scenes.scenes
+      .filter((scene) => !voiceLines.get(Number(scene.id))?.length)
+      .map((scene) => scene.id);
+    if (missingVoiceTimings.length > 0) {
+      throw new ConflictException(
+        `Voice timing is missing for scene(s): ${missingVoiceTimings.join(', ')}. Generate voice again before subtitles.`,
+      );
     }
 
     const output = await this.subtitlePipeline.run({
@@ -851,6 +877,10 @@ export class ProjectsService {
       });
     }
 
+    // A previous subtitle artifact may have been based on estimated timings.
+    // Replace it immediately with cues derived from the just-created audio.
+    await this.generateSubtitles(slug);
+
     await this.updateProjectTimestamp(slug);
 
     this.logger.log(
@@ -893,6 +923,40 @@ export class ProjectsService {
     if (assets.length === 0) {
       throw new ConflictException(
         'Images must be generated before rendering. Call /images first.',
+      );
+    }
+
+    const missingImages = scenes.scenes
+      .filter(
+        (scene) =>
+          !assets.some(
+            (asset) =>
+              String(asset.sceneId) === String(scene.id) &&
+              asset.status === 'ready' &&
+              Boolean(asset.path),
+          ),
+      )
+      .map((scene) => scene.id);
+    if (missingImages.length > 0) {
+      throw new ConflictException(
+        `Generate a valid image for every scene before rendering. Missing scene(s): ${missingImages.join(', ')}.`,
+      );
+    }
+
+    const missingAudio = scenes.scenes
+      .filter(
+        (scene) =>
+          !audioAssets.some(
+            (asset) =>
+              String(asset.sceneId) === String(scene.id) &&
+              asset.status === 'ready' &&
+              Boolean(asset.path),
+          ),
+      )
+      .map((scene) => scene.id);
+    if (missingAudio.length > 0) {
+      throw new ConflictException(
+        `Generate voice for every scene before rendering. Missing scene(s): ${missingAudio.join(', ')}.`,
       );
     }
 
@@ -981,7 +1045,14 @@ export class ProjectsService {
       );
     }
 
-    const audioAsset = audioAssets.find((a) => a.sceneId === sceneId);
+    const audioAsset = audioAssets.find(
+      (a) => a.sceneId === sceneId && a.status === 'ready' && Boolean(a.path),
+    );
+    if (!audioAsset) {
+      throw new ConflictException(
+        `Voice for scene ${sceneId} not found. Generate voice first.`,
+      );
+    }
     const audioDuration = audioAsset?.duration ?? 0;
     const duration =
       audioDuration > 0
@@ -1047,9 +1118,20 @@ export class ProjectsService {
       project.id,
       'AUDIO',
     );
-    if (audioAssets.length === 0) {
-      this.logger.warn(
-        `No audio assets found for project "${slug}". Video will have no voice.`,
+    const missingAudio = scenes.scenes
+      .filter(
+        (scene) =>
+          !audioAssets.some(
+            (asset) =>
+              String(asset.sceneId) === String(scene.id) &&
+              asset.status === 'ready' &&
+              Boolean(asset.path),
+          ),
+      )
+      .map((scene) => scene.id);
+    if (missingAudio.length > 0) {
+      throw new ConflictException(
+        `Cannot compose without voice for every scene. Missing scene(s): ${missingAudio.join(', ')}.`,
       );
     }
 

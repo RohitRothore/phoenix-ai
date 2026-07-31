@@ -84,9 +84,17 @@ export class SubtitlePipeline implements Pipeline<
 
         const pauseDuration = COMEDY_PAUSES[line.timing] ?? 0;
 
-        const voiceLine = sceneVoiceLines
-          ? this.findVoiceLine(sceneVoiceLines, line, lineIndex)
-          : undefined;
+        // Voice lines are generated in dialogue order. Prefer that exact
+        // positional mapping so repeated dialogue from the same character does
+        // not accidentally reuse the first matching line's duration.
+        const orderedVoiceLine = sceneVoiceLines?.[lineIndex];
+        const voiceLine =
+          orderedVoiceLine &&
+          normalizeText(orderedVoiceLine.text) === normalizeText(line.text)
+            ? orderedVoiceLine
+            : sceneVoiceLines
+              ? this.findVoiceLine(sceneVoiceLines, line, lineIndex)
+              : undefined;
 
         let totalLineDuration: number;
         if (voiceLine && voiceLine.duration > 0) {
@@ -116,10 +124,15 @@ export class SubtitlePipeline implements Pipeline<
         const cueDurations: number[] = subLines.map((sl) => {
           const wordCount = Math.max(1, sl.split(/\s+/).length);
           const proportion =
-            totalSubLineWords > 0 ? wordCount / totalSubLineWords : 1 / subLines.length;
+            totalSubLineWords > 0
+              ? wordCount / totalSubLineWords
+              : 1 / subLines.length;
           return Math.min(
             SubtitlePipeline.MAX_CUE_DURATION,
-            Math.max(SubtitlePipeline.MIN_CUE_DURATION, speechDuration * proportion),
+            Math.max(
+              SubtitlePipeline.MIN_CUE_DURATION,
+              speechDuration * proportion,
+            ),
           );
         });
 
@@ -128,12 +141,17 @@ export class SubtitlePipeline implements Pipeline<
           (d) => (d / totalCueDuration) * speechDuration,
         );
 
-        const cueStartBase = sceneCursor + pauseDuration;
+        // VoiceGenerationService appends the timing pause to the *end* of a
+        // line's audio.  Starting a cue after that pause made every caption
+        // lag its spoken line and, cumulatively, made the subtitles appear to
+        // run too quickly.  Display the cue during speech, then advance the
+        // scene cursor over the trailing pause.
+        const cueStartBase = sceneCursor;
 
         for (let si = 0; si < subLines.length; si++) {
-          const cueStart = cueStartBase + normalizedDurations
-            .slice(0, si)
-            .reduce((sum, d) => sum + d, 0);
+          const cueStart =
+            cueStartBase +
+            normalizedDurations.slice(0, si).reduce((sum, d) => sum + d, 0);
 
           const cueEnd = cueStart + normalizedDurations[si];
 
