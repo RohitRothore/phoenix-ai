@@ -22,6 +22,7 @@ export interface VoiceLineResult {
   emotion: string;
   audioAssetId: string;
   duration: number;
+  startTime?: number;
   status: 'ready' | 'error';
   errorMessage?: string;
 }

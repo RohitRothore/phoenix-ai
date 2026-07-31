@@ -86,7 +86,7 @@ export class SceneRendererService {
 
     const concatEntries: string[] = [];
 
-    for (const scene of sortedScenes) {
+    for (const [sceneIndex, scene] of sortedScenes.entries()) {
       try {
         await this.pipelineState.addLog(projectId, 'scene-rendering', {
           timestamp: new Date(),
@@ -107,7 +107,11 @@ export class SceneRendererService {
           absImagePath = this.storage.getAbsolutePath(scene.imagePath);
         }
 
-        const movement = this.determineCameraMovement(scene.prompt);
+        const movement = this.determineCameraMovement(
+          scene.prompt,
+          sceneIndex,
+          sortedScenes.length,
+        );
         const filter = this.buildVideoFilter(movement, width, height);
 
         const ffmpegArgs: string[] = ['-y', '-loop', '1', '-i', absImagePath];
@@ -115,17 +119,18 @@ export class SceneRendererService {
         let hasAudio = false;
         if (scene.audioPath) {
           try {
-            let audioAbsPath: string;
             const audioGridfsId = scene.audioPath?.replace('gridfs:', '') ?? '';
             if (audioGridfsId) {
               const audioData = await this.gridfs.downloadFile(audioGridfsId);
               const tempAudioPath = path.join(tempDir, `audio-${scene.id}.wav`);
               await fs.writeFile(tempAudioPath, audioData);
-              audioAbsPath = tempAudioPath;
+              ffmpegArgs.push('-i', tempAudioPath);
             } else {
-              audioAbsPath = this.storage.getAbsolutePath(scene.audioPath);
+              const audioAbsPath = this.storage.getAbsolutePath(
+                scene.audioPath,
+              );
+              ffmpegArgs.push('-i', audioAbsPath);
             }
-            ffmpegArgs.push('-i', audioAbsPath);
             hasAudio = true;
           } catch (e) {
             this.logger.warn(
@@ -148,6 +153,10 @@ export class SceneRendererService {
         );
 
         if (hasAudio) {
+          // Pad or trim audio to match scene duration so the video clip
+          // always has exactly scene.duration seconds of audio.
+          // This prevents -shortest from cutting the video early when
+          // the audio is shorter than the scene duration.
           ffmpegArgs.push(
             '-c:a',
             'aac',
@@ -155,7 +164,10 @@ export class SceneRendererService {
             '128k',
             '-ac',
             '1',
-            '-shortest',
+            '-af',
+            `apad=whole_dur=${scene.duration}`,
+            '-t',
+            String(scene.duration),
           );
         } else {
           ffmpegArgs.push('-an');
@@ -265,18 +277,61 @@ export class SceneRendererService {
     return results;
   }
 
-  private determineCameraMovement(prompt: RenderPrompt): CameraMovement {
+  /**
+   * Assigns a camera movement to each scene for visual variety.
+   *
+   * The RenderPrompt's camera/lighting/mood fields are typically empty strings
+   * (the PromptBuilderPrompt instructs the AI to leave them blank). This method
+   * therefore falls back to **scene-position-based** assignment so that images
+   * always get dynamic zoom / pan effects instead of rendering as static stills.
+   */
+  private determineCameraMovement(
+    prompt: RenderPrompt,
+    sceneIndex: number,
+    totalScenes: number,
+  ): CameraMovement {
     const mood = prompt.mood.toLowerCase();
     const camera = prompt.camera.toLowerCase();
 
-    if (camera.includes('zoom') || mood.includes('intense')) return 'zoom-in';
-    if (camera.includes('pan') || mood.includes('mysterious'))
-      return 'pan-left';
-    if (mood.includes('dramatic') || camera.includes('tilt')) return 'pan-up';
-    if (mood.includes('calm') || mood.includes('peaceful')) return 'static';
-    return 'static';
+    // Honour explicit camera / mood direction if the prompt provides it
+    if (camera.includes('zoom')) return 'zoom-in';
+    if (camera.includes('pan')) return 'pan-left';
+    if (mood.includes('intense') || mood.includes('dramatic')) return 'zoom-in';
+    if (mood.includes('mysterious')) return 'pan-left';
+    if (mood.includes('calm') || mood.includes('peaceful')) return 'zoom-out';
+
+    // Position-based assignment for visual variety
+    const isFirst = sceneIndex === 0;
+    const isLast = sceneIndex === totalScenes - 1;
+
+    // Hook scene (first): strong zoom-in to grab attention immediately
+    if (isFirst) return 'zoom-in';
+
+    // Punchline scene (last): dramatic zoom-in for comedic impact
+    if (isLast) return 'zoom-in';
+
+    // Middle scenes: rotate through varied movements to keep things dynamic.
+    // A prime multiplier spreads the cycle so short videos still get variety.
+    const variety: CameraMovement[] = [
+      'zoom-in',
+      'zoom-out',
+      'pan-left',
+      'pan-right',
+      'pan-up',
+      'pan-down',
+    ];
+    const idx = (sceneIndex * 7 + Math.floor(sceneIndex / 2)) % variety.length;
+    return variety[idx];
   }
 
+  /**
+   * Builds the FFmpeg video filter chain for the given camera movement.
+   *
+   * Zoom rates have been increased so the effect is clearly visible on short
+   * (4–10 s) scenes.  At 30 fps:
+   *   zoom-in:  reaches 1.8× in ~3.3 s  (0.005 / frame)
+   *   zoom-out: starts at 1.8×, settles to 1.0× in ~3.3 s
+   */
   private buildVideoFilter(
     movement: CameraMovement,
     width: number,
@@ -287,17 +342,17 @@ export class SceneRendererService {
 
     switch (movement) {
       case 'zoom-in':
-        return `${scale},${pad},zoompan=z='min(zoom+0.001,1.5)':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},zoompan=z='min(zoom+0.005,1.8)':d=1:s=${width}x${height}:fps=30`;
       case 'zoom-out':
-        return `${scale},${pad},zoompan=z='max(zoom-0.001,1.0)':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},zoompan=z='if(between(zoom,1.0,1.8),max(zoom-0.005,1.0),1.8)':d=1:s=${width}x${height}:fps=30`;
       case 'pan-left':
-        return `${scale},${pad},zoompan=z='1.2':x='iw/2-(iw/zoom/2)+((iw/zoom)*0.1)*on':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},zoompan=z='1.3':x='iw/2-(iw/zoom/2)+((iw/zoom)*0.15)*on':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
       case 'pan-right':
-        return `${scale},${pad},zoompan=z='1.2':x='iw/2-(iw/zoom/2)-((iw/zoom)*0.1)*on':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},zoompan=z='1.3':x='iw/2-(iw/zoom/2)-((iw/zoom)*0.15)*on':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
       case 'pan-up':
-        return `${scale},${pad},zoompan=z='1.2':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+((ih/zoom)*0.05)*on':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},zoompan=z='1.3':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+((ih/zoom)*0.08)*on':d=1:s=${width}x${height}:fps=30`;
       case 'pan-down':
-        return `${scale},${pad},zoompan=z='1.2':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-((ih/zoom)*0.05)*on':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},zoompan=z='1.3':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-((ih/zoom)*0.08)*on':d=1:s=${width}x${height}:fps=30`;
       case 'fade':
         return `${scale},${pad},fade=t=in:st=0:d=1,fade=t=out:st=4:d=1`;
       case 'cross-fade':
