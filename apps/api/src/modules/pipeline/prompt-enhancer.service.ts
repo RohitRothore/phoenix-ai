@@ -9,64 +9,18 @@ import { RenderPrompt } from '../ai/agents/prompt/prompt.types';
 export class PromptEnhancerService {
   private readonly logger = new Logger(PromptEnhancerService.name);
 
-  private static readonly QUALITY_TAGS = [
-    'highly detailed',
-    'sharp focus',
-    'vibrant colors',
-    'professional illustration',
-    '4K quality',
-    'clean composition',
-  ];
-
-  private static readonly NEGATIVE_PROMPT_BASE = [
-    'text',
-    'watermark',
-    'blurry',
-    'extra fingers',
-    'deformed',
-    'low quality',
-    'cropped',
-    'ugly',
-    'duplicate',
-    'out of frame',
-    'disfigured',
-    'bad anatomy',
-  ].join(', ');
-
   constructor(
     @Inject(PROVIDER_REGISTRY)
     private readonly registry: ProviderRegistry,
   ) {}
 
   enhancePrompt(prompt: RenderPrompt): RenderPrompt {
-    const enhancedParts: string[] = [];
-
-    enhancedParts.push(prompt.prompt);
-
-    if (prompt.lighting) {
-      enhancedParts.push(prompt.lighting);
-    } else {
-      enhancedParts.push('natural cinematic lighting');
-    }
-
-    if (prompt.camera) {
-      enhancedParts.push(prompt.camera);
-    } else {
-      enhancedParts.push('medium shot');
-    }
-
-    if (prompt.mood) {
-      enhancedParts.push(`${prompt.mood} atmosphere`);
-    }
-
-    const qualitySuffix = PromptEnhancerService.QUALITY_TAGS.join(', ');
-    enhancedParts.push(qualitySuffix);
-
+    // For Pollinations.ai (FLUX), keep prompts short and natural.
+    // No quality tags needed — FLUX handles quality natively.
+    // The prompt builder already generates concise prompts optimized for Pollinations.
     return {
       ...prompt,
-      prompt: enhancedParts.join(', '),
-      negativePrompt:
-        prompt.negativePrompt || PromptEnhancerService.NEGATIVE_PROMPT_BASE,
+      negativePrompt: prompt.negativePrompt || 'text, watermark, blurry, ugly',
     };
   }
 

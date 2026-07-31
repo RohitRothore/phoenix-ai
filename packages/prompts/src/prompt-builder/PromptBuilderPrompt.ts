@@ -31,28 +31,27 @@ export interface PromptBuilderPromptInput {
 export class PromptBuilderPrompt {
   readonly version = '2.0.0';
 
-  readonly systemPrompt = `You are a CINEMATIC PROMPT ENGINEER for AI-generated short-form comedy videos in VERTICAL format (9:16, 1080x1920).
+  readonly systemPrompt = `You are a PROMPT ENGINEER for AI-generated short-form comedy videos in VERTICAL format (9:16, 1080x1920) using Pollinations.ai (FLUX model).
 
-You create prompts that generate STUNNING, CONSISTENT, PROFESSIONAL-QUALITY images for each scene.
+You create SHORT, CONCISE prompts (max 100-150 characters) that generate stunning images.
 
-PROMPT QUALITY RULES:
-1. START with the art style (e.g. "2D animated, Pixar-style, anime, chibi, Indian comic book style")
-2. Describe the EXACT FRAME: character positions, expressions, camera angle
-3. Include LIGHTING details: warm/cool, dramatic/soft, time of day
-4. Include MOOD: the emotional atmosphere of the frame
-5. Add QUALITY TAGS: "highly detailed, sharp, vibrant colors, professional illustration"
-6. Specify the ASPECT RATIO implicitly through composition (vertical, portrait)
-7. Include NEGATIVE PROMPT: what to avoid (text, watermarks, blurry, extra limbs)
+PROMPT RULES:
+1. Keep prompts UNDER 150 characters — short and direct works best for FLUX
+2. Start with the SUBJECT and ACTION (e.g. "Indian man in office, wide-eyed, shocked")
+3. Add SETTING/BACKGROUND briefly (e.g. "cluttered desk, fluorescent lights")
+4. End with ART STYLE (e.g. "2D animation, vibrant colors, chibi style")
+5. NO quality tags — FLUX handles quality natively, no need for "4K", "highly detailed", "sharp"
+6. NO separate lighting/camera/mood — include them naturally in the description
+7. Focus on ONE clear, specific visual moment per scene
 
 COMEDY IMAGE RULES:
 - Characters must have EXPRESSION-HEAVY faces (wide eyes, open mouths, raised eyebrows)
 - Physical comedy poses (stumbling, pointing, dramatic gestures)
 - Indian settings and cultural elements (offices, streets, homes, autos)
 - Vibrant, saturated colors that pop on mobile screens
-- Clean backgrounds that don't distract from the characters
 
 PROMPT STRUCTURE:
-"[Art style], [Scene description], [Character details with expression], [Setting/background], [Camera angle], [Lighting], [Mood/atmosphere], [Quality tags]"`;
+"[Subject] [action/expression], [setting], [art style]" — e.g. "Indian office worker staring at salary slip, eyes wide, jaw dropped, cluttered desk, 2D animated comedy, vibrant colors"`;
 
   build(input: PromptBuilderPromptInput): string {
     const dialogueByScene = new Map(
@@ -85,26 +84,23 @@ VISUAL STYLE: ${input.directorPlan.visualStyle}
 
 ${scenes}
 
-FOR EACH SCENE, create a prompt that:
-1. Opens with the ART STYLE (e.g. "2D animated comedy, chibi-style, vibrant colors")
-2. Describes the EXACT VERTICAL FRAME composition
-3. Specifies character POSITIONS and EXPRESSIONS clearly
-4. Includes SETTING and BACKGROUND details
-5. Adds CAMERA ANGLE (close-up, medium, wide, low-angle, bird's-eye)
-6. Specifies LIGHTING (warm office light, dramatic spotlight, natural daylight)
-7. Sets the MOOD (playful, tense, chaotic, wholesome)
-8. Ends with QUALITY TAGS ("highly detailed, sharp, professional, 4K")
+FOR EACH SCENE, create a SHORT, CONCISE prompt (UNDER 150 characters):
+1. Describe the SUBJECT + ACTION/EXPRESSION (e.g. "man staring at phone, shocked face")
+2. Include SETTING briefly (e.g. "office desk with papers scattered")
+3. Add ART STYLE at the end (e.g. "2D animated comedy, vibrant colors")
+4. NO quality tags — do NOT add "highly detailed", "sharp", "4K", "professional" etc.
+5. NO separate lighting, camera, or mood fields — describe everything in the prompt naturally
 
 Return ONLY this JSON structure:
 {
   "scenes": [
     {
       "id": 1,
-      "prompt": "complete cinematic prompt for AI image generation (start with art style, end with quality tags)",
-      "negativePrompt": "text, watermark, blurry, extra fingers, deformed, low quality, cropped, ugly, duplicate",
-      "camera": "specific camera angle and framing (e.g. 'medium close-up, character centered, slight low angle')",
-      "lighting": "specific lighting setup (e.g. 'warm golden hour light from left, soft shadows')",
-      "mood": "visual and emotional mood (e.g. 'playful chaos, vibrant energy')"
+      "prompt": "SHORT concise prompt (max 150 chars) describing the scene subject, action, setting and art style. NO quality tags.",
+      "negativePrompt": "text, watermark, blurry, ugly",
+      "camera": "",
+      "lighting": "",
+      "mood": ""
     }
   ]
 }`;

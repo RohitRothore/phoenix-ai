@@ -39,8 +39,8 @@ CRITICAL RULES:
 - Respond with ONLY valid JSON. No markdown, no prose, no code blocks.
 - Each scene duration: 4-10 seconds (shorter is better for engagement).
 - Total video duration: 30-50 seconds max for short-form.
-- Visual prompts must describe the EXACT frame: who is where, doing what, with what expression.
-- Include CAMERA ANGLE in every scene description.`;
+- Visual prompts must be SHORT and CONCISE (under 150 characters) — optimized for AI image generation.
+- Describe only: WHO is in frame + WHAT they're doing + FACIAL EXPRESSION + SETTING. Keep it brief.`;
 
   build(input: ScenePromptInput): string {
     const { project, directorPlan, story } = input;
@@ -86,9 +86,9 @@ Return ONLY this JSON (no markdown, no code blocks):
       "title": "short, punchy scene title",
       "act": "which story act this belongs to",
       "duration": 5,
-      "description": "DETAILED vertical frame description: who is in frame, where they are positioned, what they are doing, their facial expression, the background/setting, lighting mood, and camera angle. This must be specific enough for an AI to generate a single consistent image.",
+      "description": "SHORT scene description: who is in frame, what they are doing, facial expression, setting. Keep under 150 characters.",
       "dialogue": "key dialogue or action description (in ${project.language})",
-      "visualPrompt": "optimized for AI image generation: describe the exact visual frame, character pose, expression, setting, lighting, and art style. Focus on what the AI IMAGE should look like.",
+      "visualPrompt": "SHORT visual prompt (under 150 chars): subject + action + expression + setting. E.g. 'man staring at phone, shocked face, office desk, 2D animated comedy'",
       "comedyElement": "what makes this specific frame/moment funny"
     }
   ]
