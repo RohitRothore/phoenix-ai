@@ -339,42 +339,6 @@ export function ProduceStep({
           </p>
 
           <div className="space-y-3">
-            {/* Step 1: Render Scenes */}
-            <ProduceAction
-              step={1}
-              label="Render Scenes"
-              icon={<ListVideo className="size-4" />}
-              stageStatus={renderStage}
-              isDone={hasRenderedClips}
-              isLoading={produceLoading.render}
-              disabled={anyLoading || !hasImages}
-              loadingText="Rendering..."
-              doneLabel="Re-render All"
-              defaultLabel="Render All Scenes"
-              progress={totalScenes > 0 ? renderedScenes : undefined}
-              total={totalScenes > 0 ? totalScenes : undefined}
-              stageError={renderStageInfo?.errorMessage}
-              startedAt={renderStageInfo?.startedAt}
-              onAction={handleRender}
-            />
-
-            {/* Step 2: Generate Subtitles */}
-            <ProduceAction
-              step={2}
-              label="Subtitles"
-              icon={<FileText className="size-4" />}
-              stageStatus={subtitleStage}
-              isDone={hasSubtitles}
-              isLoading={produceLoading.subtitles}
-              disabled={anyLoading || !hasRenderedClips}
-              loadingText="Generating..."
-              doneLabel="Regenerate Subtitles"
-              defaultLabel="Generate Subtitles"
-              stageError={subtitleStageInfo?.errorMessage}
-              startedAt={subtitleStageInfo?.startedAt}
-              onAction={handleSubtitles}
-            />
-
             {/* Step 3: Generate Voice */}
             <ProduceAction
               step={3}
@@ -383,7 +347,7 @@ export function ProduceStep({
               stageStatus={voiceStage}
               isDone={hasVoice}
               isLoading={produceLoading.voice}
-              disabled={anyLoading || !hasRenderedClips}
+              disabled={anyLoading}
               loadingText="Generating Voice..."
               doneLabel="Regenerate Voice"
               defaultLabel="Generate Voice"
@@ -394,6 +358,42 @@ export function ProduceStep({
               }
               startedAt={voiceStageInfo?.startedAt}
               onAction={handleVoice}
+            />
+
+            {/* Step 2: Generate Subtitles */}
+            <ProduceAction
+              step={2}
+              label="Subtitles"
+              icon={<FileText className="size-4" />}
+              stageStatus={subtitleStage}
+              isDone={hasSubtitles}
+              isLoading={produceLoading.subtitles}
+              disabled={anyLoading}
+              loadingText="Generating..."
+              doneLabel="Regenerate Subtitles"
+              defaultLabel="Generate Subtitles"
+              stageError={subtitleStageInfo?.errorMessage}
+              startedAt={subtitleStageInfo?.startedAt}
+              onAction={handleSubtitles}
+            />
+
+            {/* Step 1: Render Scenes */}
+            <ProduceAction
+              step={1}
+              label="Render Scenes"
+              icon={<ListVideo className="size-4" />}
+              stageStatus={renderStage}
+              isDone={hasRenderedClips}
+              isLoading={produceLoading.render}
+              disabled={anyLoading || !hasImages || !hasVoice}
+              loadingText="Rendering..."
+              doneLabel="Re-render All"
+              defaultLabel="Render All Scenes"
+              progress={totalScenes > 0 ? renderedScenes : undefined}
+              total={totalScenes > 0 ? totalScenes : undefined}
+              stageError={renderStageInfo?.errorMessage}
+              startedAt={renderStageInfo?.startedAt}
+              onAction={handleRender}
             />
 
             {/* Step 4: Compose Final Video */}
@@ -592,7 +592,7 @@ function ProduceResultsView({
   const anyLoading =
     parentLoading.produce || Object.values(loading).some(Boolean);
 
-  if (!renderResults && !compositionResult) {
+  if (!voiceResult && !compositionResult) {
     return (
       <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#27272A] bg-[#111111]/30 p-12 text-center">
         <Film className="mb-4 size-12 animate-pulse text-zinc-600 stroke-1" />
@@ -609,6 +609,20 @@ function ProduceResultsView({
 
   return (
     <div className="space-y-4">
+      {/* Voice Results */}
+      {voiceResult && voiceResult.lines.length > 0 && (
+        <VoiceSection
+          projectSlug={projectSlug}
+          voiceResult={voiceResult}
+          pipelineStages={pipelineStages}
+        />
+      )}
+
+      {/* Subtitles */}
+      {subtitles && subtitles.status === "ready" && (
+        <SubtitlesSection subtitles={subtitles} />
+      )}
+
       {/* Scene Clips */}
       {renderResults && renderResults.length > 0 && (
         <SceneClipsSection
@@ -619,20 +633,6 @@ function ProduceResultsView({
           pipelineStages={pipelineStages}
           loading={anyLoading}
           onRenderScene={onRenderScene}
-        />
-      )}
-
-      {/* Subtitles */}
-      {subtitles && subtitles.status === "ready" && (
-        <SubtitlesSection subtitles={subtitles} />
-      )}
-
-      {/* Voice Results */}
-      {voiceResult && voiceResult.lines.length > 0 && (
-        <VoiceSection
-          projectSlug={projectSlug}
-          voiceResult={voiceResult}
-          pipelineStages={pipelineStages}
         />
       )}
 

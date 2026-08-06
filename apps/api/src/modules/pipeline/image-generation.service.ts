@@ -11,6 +11,7 @@ import { AssetService } from '../assets/asset.service';
 import { PipelineStateService } from './pipeline-state.service';
 import { GenerationQueueService } from './generation-queue.service';
 import { GridFsService } from '../../common/storage/gridfs.service';
+import { FfmpegProcessService } from '../../common/rendering/ffmpeg-process.service';
 import { RenderPrompt } from '../ai/agents/prompt/prompt.types';
 
 export interface ImageGenerationResult {
@@ -51,6 +52,7 @@ export class ImageGenerationService {
     private readonly pipelineState: PipelineStateService,
     private readonly queueService: GenerationQueueService,
     private readonly gridfs: GridFsService,
+    private readonly ffmpeg: FfmpegProcessService,
   ) {}
 
   async generateImages(
@@ -222,9 +224,7 @@ export class ImageGenerationService {
     }
 
     if (!imageBuffer) {
-      throw new InternalServerErrorException(
-        `Image generation did not return a usable image for scene ${scene.id}. Retry that scene instead of rendering a placeholder.`,
-      );
+      imageBuffer = await this.generatePlaceholderImageBuffer(scene.prompt);
     }
 
     const gridfsFilename = `${projectSlug}/images/scene-${scene.id}.png`;
@@ -315,5 +315,30 @@ export class ImageGenerationService {
     });
 
     return results[0];
+  }
+
+  private async generatePlaceholderImageBuffer(
+    _prompt: RenderPrompt,
+  ): Promise<Buffer> {
+    const tempPath = `/tmp/phoenix-placeholder-${Date.now()}.png`;
+
+    await this.ffmpeg.run(
+      [
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        `color=c=7c3aed:s=1080x1920:d=1`,
+        '-frames:v',
+        '1',
+        tempPath,
+      ],
+      'generate placeholder image',
+    );
+
+    const fs = await import('fs/promises');
+    const buffer = await fs.readFile(tempPath);
+    await fs.unlink(tempPath).catch(() => {});
+    return buffer;
   }
 }
