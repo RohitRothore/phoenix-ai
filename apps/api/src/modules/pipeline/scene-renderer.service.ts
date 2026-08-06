@@ -124,9 +124,26 @@ export class SceneRendererService {
           sceneIndex,
           sortedScenes.length,
         );
-        const filter = this.buildVideoFilter(movement, width, height);
+        const filter = this.buildVideoFilter(
+          movement,
+          width,
+          height,
+          scene.duration,
+          fps,
+        );
 
-        const ffmpegArgs: string[] = ['-y', '-loop', '1', '-i', absImagePath];
+        // Supplying the input frame rate is important here: zoompan advances one
+        // step per input frame. Without it, camera moves can be imperceptibly
+        // slow or inconsistent between machines.
+        const ffmpegArgs: string[] = [
+          '-y',
+          '-loop',
+          '1',
+          '-framerate',
+          String(fps),
+          '-i',
+          absImagePath,
+        ];
 
         let hasAudio = false;
         if (scene.audioPath) {
@@ -339,32 +356,43 @@ export class SceneRendererService {
   /**
    * Builds the FFmpeg video filter chain for the given camera movement.
    *
-   * Zoom rates have been increased so the effect is clearly visible on short
-   * (4–10 s) scenes.  At 30 fps:
-   *   zoom-in:  reaches 1.8× in ~3.3 s  (0.005 / frame)
-   *   zoom-out: starts at 1.8×, settles to 1.0× in ~3.3 s
+   * Each path is calculated from the scene's exact frame count. This makes
+   * movement finish naturally at the end of a 3-second scene as well as a
+   * 12-second scene, instead of either barely moving or hitting a zoom cap.
    */
   private buildVideoFilter(
     movement: CameraMovement,
     width: number,
     height: number,
+    duration: number,
+    fps: number,
   ): string {
     const scale = `scale=${width}:${height}`;
     const pad = `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`;
+    const totalFrames = Math.max(1, Math.round(duration * fps));
+    const lastFrame = Math.max(1, totalFrames - 1);
+    const zoomStart = 1.18;
+    const zoomStep = ((zoomStart - 1) / lastFrame).toFixed(6);
+    const zoomPan = (options: string) =>
+      `zoompan=${options}:d=1:s=${width}x${height}:fps=${fps}`;
+    // A short fade prevents hard cuts while retaining nearly all of each scene.
+    const fadeIn = 'fade=t=in:st=0:d=0.3';
+    const fadeOutStart = Math.max(0, duration - 0.3).toFixed(3);
+    const fades = `${fadeIn},fade=t=out:st=${fadeOutStart}:d=0.3`;
 
     switch (movement) {
       case 'zoom-in':
-        return `${scale},${pad},zoompan=z='min(zoom+0.005,1.8)':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},${zoomPan(`z='min(zoom+${zoomStep},${zoomStart})'`)},${fades}`;
       case 'zoom-out':
-        return `${scale},${pad},zoompan=z='if(between(zoom,1.0,1.8),max(zoom-0.005,1.0),1.8)':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},${zoomPan(`z='if(eq(on,0),${zoomStart},max(1,zoom-${zoomStep}))'`)},${fades}`;
       case 'pan-left':
-        return `${scale},${pad},zoompan=z='1.3':x='iw/2-(iw/zoom/2)+((iw/zoom)*0.15)*on':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},${zoomPan(`z='1.14':x='(iw-iw/zoom)*(on/${lastFrame})':y='(ih-ih/zoom)/2'`)},${fades}`;
       case 'pan-right':
-        return `${scale},${pad},zoompan=z='1.3':x='iw/2-(iw/zoom/2)-((iw/zoom)*0.15)*on':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},${zoomPan(`z='1.14':x='(iw-iw/zoom)*(1-on/${lastFrame})':y='(ih-ih/zoom)/2'`)},${fades}`;
       case 'pan-up':
-        return `${scale},${pad},zoompan=z='1.3':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+((ih/zoom)*0.08)*on':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},${zoomPan(`z='1.14':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)*(on/${lastFrame})'`)},${fades}`;
       case 'pan-down':
-        return `${scale},${pad},zoompan=z='1.3':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-((ih/zoom)*0.08)*on':d=1:s=${width}x${height}:fps=30`;
+        return `${scale},${pad},${zoomPan(`z='1.14':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)*(1-on/${lastFrame})'`)},${fades}`;
       case 'fade':
         return `${scale},${pad},fade=t=in:st=0:d=1,fade=t=out:st=4:d=1`;
       case 'cross-fade':
